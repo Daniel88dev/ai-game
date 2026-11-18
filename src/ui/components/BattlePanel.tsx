@@ -55,7 +55,7 @@ export function BattlePanel({ rt }: { rt: Runtime }) {
             </div>
             <p className="small muted">
               {view.phase === 'won'
-                ? 'The ticket moved to Code Review. Tell Priya.'
+                ? `The ticket moved to Code Review. Tell ${view.reportTo}.`
                 : view.phase === 'lost'
                   ? 'You wake up at your desk with half HP. Grab a coffee and try again.'
                   : 'The bug is still there. Come back when you are ready.'}
@@ -66,6 +66,15 @@ export function BattlePanel({ rt }: { rt: Runtime }) {
           </div>
         ) : (
           <>
+            {view.traits.length > 0 && (
+              <div className="battle-traits">
+                {view.traits.map((t) => (
+                  <span key={t} className="chip chip-trait">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="actions-grid">
               {view.actions.map((a, i) => (
                 <button

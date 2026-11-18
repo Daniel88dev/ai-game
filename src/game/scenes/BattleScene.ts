@@ -31,6 +31,8 @@ export class BattleScene extends Phaser.Scene {
   private enemyHp!: Bar;
   private rootCauseTag!: Phaser.GameObjects.Text;
   private warning!: Phaser.GameObjects.Text;
+  /** Small green "test" shield shown once a test guards the hero. */
+  private shield!: Phaser.GameObjects.Text;
   private shown!: GameState;
 
   constructor(private readonly rt: Runtime) {
@@ -43,7 +45,7 @@ export class BattleScene extends Phaser.Scene {
     const battle = state.battle!;
     const enemyDef = ENEMIES[battle.enemyId]!;
 
-    this.drawBackground();
+    this.drawBackground(enemyDef.codePath);
 
     // shadows
     this.add.ellipse(HERO_X, GROUND_Y + 2, 44, 8, hex('k'));
@@ -70,6 +72,10 @@ export class BattleScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
     this.tweens.add({ targets: this.warning, alpha: 0.3, yoyo: true, repeat: -1, duration: 300 });
+    this.shield = this.add
+      .text(HERO_X, GROUND_Y - 84, '[TEST]', { fontFamily: FONT, fontSize: '8px', color: '#46c46e' })
+      .setOrigin(0.5, 0)
+      .setVisible(battle.testWritten);
 
     this.renderBars(state, true);
     this.cameras.main.fadeIn(200, 20, 18, 31);
@@ -81,7 +87,7 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private drawBackground() {
+  private drawBackground(codePath: string) {
     const g = this.add.graphics();
     g.fillStyle(hex('k')).fillRect(0, 0, VIEW_WIDTH, 256);
     // "code" lines scrolling in the void of the Codebase
@@ -98,7 +104,7 @@ export class BattleScene extends Phaser.Scene {
     g.fillStyle(hex('d')).fillRect(0, GROUND_Y, VIEW_WIDTH, 256 - GROUND_Y);
     g.fillStyle(hex('m')).fillRect(0, GROUND_Y, VIEW_WIDTH, 2);
     for (let x = 0; x < VIEW_WIDTH; x += 24) g.fillStyle(hex('m')).fillRect(x, GROUND_Y + 2, 1, 256);
-    this.add.text(VIEW_WIDTH / 2, 4, 'THE CODEBASE  src/auth/login.ts', { fontFamily: FONT, fontSize: '8px', color: '#6e6a8f' }).setOrigin(0.5, 0);
+    this.add.text(VIEW_WIDTH / 2, 4, `THE CODEBASE  ${codePath}`, { fontFamily: FONT, fontSize: '8px', color: '#6e6a8f' }).setOrigin(0.5, 0);
   }
 
   private bar(x: number, y: number, width: number, colour: string, title: string): Bar {
@@ -119,7 +125,7 @@ export class BattleScene extends Phaser.Scene {
     this.setBar(this.heroHp, s.hero.hp, maxHp(s.hero), instant);
     this.setBar(this.heroFocus, s.hero.focusPoints, maxFocus(s.hero), instant);
     if (s.battle) {
-      this.setBar(this.enemyHp, s.battle.enemyHp, ENEMIES[s.battle.enemyId]!.maxHp, instant);
+      this.setBar(this.enemyHp, s.battle.enemyHp, s.battle.enemyMaxHp, instant);
       this.rootCauseTag.setVisible(s.battle.rootCauseRevealed && s.battle.phase === 'heroTurn');
     }
   }
@@ -154,8 +160,31 @@ export class BattleScene extends Phaser.Scene {
         }
         break;
       case 'StackTraceRead':
-        this.popup(HERO_X, e.success ? 'ROOT CAUSE!' : '???', e.success ? '#4fd6e0' : '#9d99bd');
+        if (e.rootCause) this.popup(HERO_X, 'ROOT CAUSE!', '#4fd6e0');
+        else if (e.success) this.popup(HERO_X, `CLUE ${e.clues}/${e.cluesNeeded}`, '#4fd6e0');
+        else this.popup(HERO_X, '???', '#9d99bd');
         if (e.success) this.scan();
+        break;
+      case 'TestWritten':
+        this.lunge(this.hero, 1);
+        this.hit(this.enemy);
+        this.popup(ENEMY_X, `-${e.damage}`, '#e8e6f0');
+        this.popup(HERO_X, 'TEST ADDED', '#46c46e', 34);
+        this.shield.setVisible(true);
+        break;
+      case 'AttackDodged':
+        this.lunge(this.enemy, -1);
+        this.tweens.add({ targets: this.hero, x: HERO_X - 26, yoyo: true, duration: 120, ease: 'Quad.out' });
+        this.popup(HERO_X, 'DODGE', '#f7e26b');
+        break;
+      case 'EnemyGrew':
+        this.tweens.add({ targets: this.enemy, scale: 4 + Math.min(2, e.attackBonus * 0.2), duration: 300, ease: 'Back.out' });
+        this.popup(ENEMY_X, `+${e.attackBonus} ATK`, '#f5a524', 34);
+        break;
+      case 'EnemyRevived':
+        this.enemy.setAlpha(0.2);
+        this.tweens.add({ targets: this.enemy, alpha: 1, duration: 500 });
+        this.popup(ENEMY_X, "IT'S BACK", '#e5484d', 34);
         break;
       case 'AiPatchApplied':
         this.beam(false);

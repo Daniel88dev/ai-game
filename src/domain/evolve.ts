@@ -2,6 +2,7 @@ import { maxFocus, maxHp, xpToNextLevel, type Hero } from './hero/hero';
 import type { DomainEvent } from './events';
 import type { GameState } from './state';
 import type { Battle } from './combat/battle';
+import { evolveMinigame, GRADE_RANK } from './minigames/minigame';
 
 const withHero = (s: GameState, f: (h: Hero) => Hero): GameState => ({ ...s, hero: f(s.hero) });
 
@@ -13,13 +14,20 @@ const withBattle = (s: GameState, f: (b: Battle) => Battle): GameState =>
  * because events are facts the decider already accepted.
  */
 export function evolve(state: GameState, event: DomainEvent): GameState {
+  if ('game' in event) {
+    // A move inside a minigame: the minigame's own evolve, plus what it cost the hero.
+    const s = state.minigame ? { ...state, minigame: evolveMinigame(state.minigame, event) } : state;
+    if (!event.cost) return s;
+    const { tokens = 0, focus = 0 } = event.cost;
+    return withHero(s, (h) => ({ ...h, tokens: h.tokens - tokens, focusPoints: Math.max(0, h.focusPoints - focus) }));
+  }
   switch (event.type) {
     case 'HeroMoved':
       return withHero(state, (h) => ({ ...h, position: event.to, facing: event.facing }));
     case 'HeroTurned':
       return withHero(state, (h) => ({ ...h, facing: event.facing }));
     case 'HeroRested':
-      return withHero(state, (h) => ({ ...h, hp: event.hp, focusPoints: event.focus }));
+      return withHero(state, (h) => ({ ...h, hp: event.hp, focusPoints: event.focus, tokens: event.tokens }));
     case 'QuestBoardOpened':
       return state;
 
@@ -28,6 +36,12 @@ export function evolve(state: GameState, event: DomainEvent): GameState {
       return { ...state, dialogue: { npcId: event.npcId, nodeId: event.nodeId } };
     case 'DialogueEnded':
       return { ...state, dialogue: null };
+    case 'StoryFlagSet':
+      return state.flags.includes(event.flag) ? state : { ...state, flags: [...state.flags, event.flag] };
+    case 'TokensGifted':
+      return withHero(state, (h) => ({ ...h, tokens: h.tokens + event.amount }));
+    case 'ActCompleted':
+      return state;
 
     case 'QuestAccepted':
       return {
@@ -66,7 +80,11 @@ export function evolve(state: GameState, event: DomainEvent): GameState {
     }
     case 'StackTraceRead': {
       const s = withHero(state, (h) => ({ ...h, focusPoints: h.focusPoints - event.focusSpent }));
-      return event.success ? withBattle(s, (b) => ({ ...b, rootCauseRevealed: true })) : s;
+      return withBattle(s, (b) => ({ ...b, clues: event.clues, rootCauseRevealed: event.rootCause !== null }));
+    }
+    case 'TestWritten': {
+      const s = withHero(state, (h) => ({ ...h, focusPoints: h.focusPoints - event.focusSpent }));
+      return withBattle(s, (b) => ({ ...b, testWritten: true, enemyHp: Math.max(0, b.enemyHp - event.damage) }));
     }
     case 'AiHallucinated': {
       const s = withHero(state, (h) => ({ ...h, tokens: h.tokens - event.tokensSpent }));
@@ -84,6 +102,12 @@ export function evolve(state: GameState, event: DomainEvent): GameState {
       const s = withHero(state, (h) => ({ ...h, hp: Math.max(0, h.hp - event.damage) }));
       return withBattle(s, (b) => ({ ...b, enemyTurns: b.enemyTurns + 1 }));
     }
+    case 'AttackDodged':
+      return withBattle(state, (b) => ({ ...b, enemyTurns: b.enemyTurns + 1 }));
+    case 'EnemyGrew':
+      return withBattle(state, (b) => ({ ...b, attackBonus: event.attackBonus }));
+    case 'EnemyRevived':
+      return withBattle(state, (b) => ({ ...b, enemyHp: event.hp, revived: true }));
     case 'HeavyAttackTelegraphed':
       return state;
     case 'BattleWon':
@@ -101,6 +125,17 @@ export function evolve(state: GameState, event: DomainEvent): GameState {
         ? withHero(s, (h) => ({ ...h, hp: event.hpAfter, focusPoints: maxFocus(h) }))
         : withHero(s, (h) => ({ ...h, hp: event.hpAfter }));
     }
+
+    case 'MinigameStarted':
+      return { ...state, minigame: event.session };
+    case 'MinigameFinished': {
+      const progress = state.quests[event.questId];
+      if (!progress) return state;
+      const best = progress.bestGrade && GRADE_RANK[progress.bestGrade] >= GRADE_RANK[event.grade] ? progress.bestGrade : event.grade;
+      return { ...state, quests: { ...state.quests, [event.questId]: { ...progress, bestGrade: best } } };
+    }
+    case 'MinigameClosed':
+      return { ...state, minigame: null };
 
     case 'XpGained':
       return withHero(state, (h) => ({ ...h, xp: h.xp + event.amount }));

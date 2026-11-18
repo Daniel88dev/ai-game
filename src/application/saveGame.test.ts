@@ -23,9 +23,33 @@ describe('save files', () => {
     ['not json', 'not valid JSON'],
     ['{"format":"other"}', 'not a Merge Conflict save'],
     ['{"format":"merge-conflict-save","version":99,"state":{}}', 'newer version'],
+    ['{"format":"merge-conflict-save","version":2,"state":{"hero":{}}}', 'damaged'],
     ['{"format":"merge-conflict-save","version":1,"state":{"hero":{}}}', 'damaged'],
   ])('rejects bad input %s', (raw, msg) => {
     expect(() => deserialize(raw)).toThrow(msg);
+  });
+
+  it('migrates a v1 save: new attributes start at 1, story flags are empty', () => {
+    const v1 = newGame('Ada');
+    const { velocity: _v, orchestration: _o, domainInsight: _d, ...oldAttributes } = v1.hero.attributes;
+    const { flags: _f, minigame: _m, ...oldState } = v1;
+    const raw = JSON.stringify({ format: 'merge-conflict-save', version: 1, savedAt: '2026-11-18T06:00:00Z', state: { ...oldState, hero: { ...v1.hero, attributes: oldAttributes } } });
+    const loaded = deserialize(raw);
+    expect(loaded.version).toBe(2);
+    expect(loaded.state.hero.attributes).toEqual({ logic: 2, rigor: 2, velocity: 1, promptCraft: 2, orchestration: 1, focus: 2, domainInsight: 1 });
+    expect(loaded.state.flags).toEqual([]);
+    expect(loaded.state.minigame).toBeNull();
+  });
+
+  it('moves a hero that would load inside furniture or an NPC back to the spawn point', () => {
+    const s = newGame();
+    const raw = serialize({ ...s, hero: { ...s.hero, position: { x: 11, y: 7 } } }, clock());
+    expect(deserialize(raw).state.hero.position).toEqual(s.hero.position);
+  });
+
+  it('refuses to save during a minigame', () => {
+    const s = { ...newGame(), minigame: { kind: 'coverage' } as unknown as NonNullable<ReturnType<typeof newGame>['minigame']> };
+    expect(() => serialize(s)).toThrow('Finish the minigame first.');
   });
 
   it('saves to slots, lists them and exports a dated file', () => {

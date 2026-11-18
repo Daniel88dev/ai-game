@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { MAP_HEIGHT, MAP_WIDTH, tileAt } from '../../domain';
+import { MAP_HEIGHT, MAP_WIDTH, NPCS, tileAt } from '../../domain';
 import { PALETTE } from '../gfx/palette';
 import { SPRITES, type Grid } from '../gfx/sprites';
 import { drawTile } from '../gfx/tiles';
@@ -15,14 +15,18 @@ export class BootScene extends Phaser.Scene {
     for (const s of SPRITES) this.gridTexture(s.key, s.grid);
     this.officeTexture();
     this.characterAnims('hero');
-    this.characterAnims('npc_priya');
-    this.characterAnims('npc_marta');
-    this.anims.create({
-      key: 'bug_null_pointer_idle',
-      frames: [{ key: 'bug_null_pointer' }, { key: 'bug_null_pointer_1' }],
-      frameRate: 3,
-      repeat: -1,
-    });
+    for (const npc of Object.values(NPCS)) this.characterAnims(npc.sprite);
+    // Two-frame idle loop for every bug: `bug_x` + `bug_x_1`.
+    const keys = new Set(SPRITES.map((s) => s.key));
+    for (const key of keys) {
+      if (!key.startsWith('bug_') || !keys.has(`${key}_1`)) continue;
+      this.anims.create({
+        key: `${key}_idle`,
+        frames: [{ key }, { key: `${key}_1` }],
+        frameRate: key === 'bug_heisenbug' ? 6 : 3,
+        repeat: -1,
+      });
+    }
     this.scene.start('office');
   }
 

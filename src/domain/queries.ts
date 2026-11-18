@@ -1,10 +1,31 @@
-import { ACTION_INFO, AI_TOKEN_COST, INVESTIGATE_FOCUS_COST, isHeavyNext, type HeroAction } from './combat/battle';
+import {
+  ACTION_INFO,
+  aiTokenCost,
+  cluesNeeded,
+  dodgeChance,
+  INVESTIGATE_FOCUS_COST,
+  isHeavyNext,
+  WRITE_TEST_FOCUS_COST,
+  type HeroAction,
+} from './combat/battle';
+import { ENCOUNTERS } from './content/encounters';
 import { ENEMIES } from './content/enemies';
 import { NPCS } from './content/npcs';
-import { QUESTS } from './content/quests';
-import { activeEncounters, encounterAt, npcAt } from './decide';
-import { ATTRIBUTES, ATTRIBUTE_INFO, MAX_ATTRIBUTE, maxFocus, maxHp, xpToNextLevel, type Attribute } from './hero/hero';
-import { STATUS_LABEL, type QuestStatus } from './quest/quest';
+import { QUEST_ORDER, QUESTS } from './content/quests';
+import { activeEncounters, dialogueContext, encounterAt, isQuestAvailable, npcAt } from './decide';
+import {
+  ATTRIBUTES,
+  ATTRIBUTE_INFO,
+  MAX_ATTRIBUTE,
+  maxFocus,
+  maxHp,
+  tokenAllowance,
+  xpToNextLevel,
+  type Attribute,
+  type AttributeGroup,
+} from './hero/hero';
+import type { Grade } from './minigames/minigame';
+import { ACTS, STATUS_LABEL, type QuestStatus } from './quest/quest';
 import { step } from './shared/geometry';
 import { modeOf, type GameState, type Mode } from './state';
 import { tileAt } from './world/officeMap';
@@ -25,13 +46,16 @@ export interface HudView {
   focus: number;
   maxFocus: number;
   tokens: number;
+  tokenAllowance: number;
   unspentPoints: number;
   activeQuest: { id: string; title: string; status: string } | null;
+  act: ActProgressView;
 }
 
 export function getHud(state: GameState): HudView {
   const { hero } = state;
-  const active = Object.entries(state.quests).find(([, p]) => p.status !== 'done' && p.status !== 'todo');
+  const entries = QUEST_ORDER.flatMap((id) => (state.quests[id] ? [[id, state.quests[id]!] as const] : []));
+  const active = entries.find(([, p]) => p.status === 'inProgress') ?? entries.find(([, p]) => p.status === 'codeReview');
   const quest = active ? QUESTS[active[0]] : undefined;
   return {
     mode: modeOf(state),
@@ -44,13 +68,15 @@ export function getHud(state: GameState): HudView {
     focus: hero.focusPoints,
     maxFocus: maxFocus(hero),
     tokens: hero.tokens,
+    tokenAllowance: tokenAllowance(hero),
     unspentPoints: hero.unspentPoints,
     activeQuest: quest && active ? { id: quest.id, title: quest.title, status: STATUS_LABEL[active[1].status] } : null,
+    act: getActProgress(state),
   };
 }
 
 export interface CharacterView {
-  attributes: { id: Attribute; label: string; effect: string; value: number; canRaise: boolean }[];
+  attributes: { id: Attribute; label: string; group: AttributeGroup; effect: string; value: number; canRaise: boolean }[];
   unspentPoints: number;
   /** -1 (all craft) .. +1 (all AI). Shown as a vague "leaning", the real axes stay hidden. */
   leaning: number;
@@ -82,27 +108,47 @@ export interface QuestLogEntry {
   description: string;
   acceptanceCriteria: { text: string; met: boolean }[];
   giver: string;
+  /** For minigame tickets: the best grade so far. */
+  bestGrade: Grade | null;
 }
 
+/** The board: tickets you can pick up (To Do) and everything you have touched. */
 export function getQuestLog(state: GameState): QuestLogEntry[] {
-  return Object.entries(state.quests).flatMap(([id, progress]) => {
-    const q = QUESTS[id];
-    if (!q) return [];
+  return QUEST_ORDER.flatMap((id) => {
+    const q = QUESTS[id]!;
+    const progress = state.quests[id];
+    const status: QuestStatus = progress?.status ?? 'todo';
+    if (!progress && !isQuestAvailable(state, id)) return [];
+    const fixed = status === 'codeReview' || status === 'done';
     return [{
       id,
       title: q.title,
       type: q.type,
       storyPoints: q.storyPoints,
-      status: progress.status,
-      statusLabel: STATUS_LABEL[progress.status],
+      status,
+      statusLabel: STATUS_LABEL[status],
       description: q.description,
-      acceptanceCriteria: q.acceptanceCriteria.map((c) => ({
-        text: c.text,
-        met: progress.status === 'done' || (c.metOn === 'fix' && state.defeatedEncounters.includes(q.targetEncounterId)),
-      })),
+      acceptanceCriteria: q.acceptanceCriteria.map((c) => ({ text: c.text, met: status === 'done' || (c.metOn === 'fix' && fixed) })),
       giver: NPCS[q.giverNpcId]?.name ?? q.giverNpcId,
+      bestGrade: progress?.bestGrade ?? null,
     }];
   });
+}
+
+export interface ActProgressView {
+  act: number;
+  title: string;
+  epic: string;
+  done: number;
+  total: number;
+  complete: boolean;
+}
+
+export function getActProgress(state: GameState, act = 1): ActProgressView {
+  const ids = QUEST_ORDER.filter((id) => QUESTS[id]!.act === act);
+  const done = ids.filter((id) => state.quests[id]?.status === 'done').length;
+  const info = ACTS[act]!;
+  return { act, title: info.title, epic: info.epic, done, total: ids.length, complete: done === ids.length };
 }
 
 export interface DialogueView {
@@ -137,11 +183,21 @@ export interface BattleActionView {
 
 export interface BattleView {
   phase: 'heroTurn' | 'won' | 'lost' | 'retreated';
-  enemy: { name: string; sprite: string; hp: number; maxHp: number };
+  enemy: { name: string; sprite: string; hp: number; maxHp: number; codePath: string };
   rootCauseRevealed: boolean;
   rootCause: string | null;
+  clues: number;
+  cluesNeeded: number;
   heavyNext: string | null;
   coffeesLeft: number;
+  testWritten: boolean;
+  /** Extra attack from a growing bug (Memory Leak). */
+  attackBonus: number;
+  dodgeChance: number;
+  /** Short notes about how this bug plays, shown under the bar. */
+  traits: string[];
+  /** Who to tell once the bug is fixed. */
+  reportTo: string;
   actions: BattleActionView[];
 }
 
@@ -151,19 +207,35 @@ export function getBattle(state: GameState): BattleView | null {
   const enemy = ENEMIES[b.enemyId]!;
   const hero = state.hero;
   const turn = b.phase === 'heroTurn';
+  const aiCost = aiTokenCost(hero.attributes.orchestration);
+  const needed = cluesNeeded(enemy);
+  const traits: string[] = [];
+  if (enemy.traits?.growth) traits.push(b.rootCauseRevealed ? 'Leak plugged: it stopped growing' : `Grows every turn (+${b.attackBonus} attack)`);
+  if (enemy.traits?.revives) traits.push(b.revived ? 'Came back once already' : b.testWritten ? 'A test keeps it from coming back' : 'Comes back unless a test exists');
+  if (needed > 1 && !b.rootCauseRevealed) traits.push(`Clues ${b.clues}/${needed}`);
+  if (enemy.traits?.aiConfusion) traits.push('Confuses PILOT');
+
   const actions: BattleActionView[] = [
     { id: 'debug', ...ACTION_INFO.debug, enabled: turn },
     {
       id: 'investigate',
       ...ACTION_INFO.investigate,
+      label: enemy.traits?.investigateLabel ?? ACTION_INFO.investigate.label,
       enabled: turn && !b.rootCauseRevealed && hero.focusPoints >= INVESTIGATE_FOCUS_COST,
       reason: b.rootCauseRevealed ? 'Root cause found' : hero.focusPoints < INVESTIGATE_FOCUS_COST ? 'Not enough Focus' : undefined,
     },
     {
+      id: 'writeTest',
+      ...ACTION_INFO.writeTest,
+      enabled: turn && !b.testWritten && hero.focusPoints >= WRITE_TEST_FOCUS_COST,
+      reason: b.testWritten ? 'Test already written' : hero.focusPoints < WRITE_TEST_FOCUS_COST ? 'Not enough Focus' : undefined,
+    },
+    {
       id: 'askAi',
       ...ACTION_INFO.askAi,
-      enabled: turn && hero.tokens >= AI_TOKEN_COST,
-      reason: hero.tokens < AI_TOKEN_COST ? 'Not enough tokens' : undefined,
+      hint: `Costs ${aiCost} tokens. Strong AI patch, but may hallucinate.`,
+      enabled: turn && hero.tokens >= aiCost,
+      reason: hero.tokens < aiCost ? 'Not enough tokens' : undefined,
     },
     {
       id: 'coffee',
@@ -175,11 +247,18 @@ export function getBattle(state: GameState): BattleView | null {
   ];
   return {
     phase: b.phase,
-    enemy: { name: enemy.name, sprite: enemy.sprite, hp: b.enemyHp, maxHp: enemy.maxHp },
+    enemy: { name: enemy.name, sprite: enemy.sprite, hp: b.enemyHp, maxHp: b.enemyMaxHp, codePath: enemy.codePath },
     rootCauseRevealed: b.rootCauseRevealed,
     rootCause: b.rootCauseRevealed ? enemy.rootCause : null,
+    clues: b.clues,
+    cluesNeeded: needed,
     heavyNext: turn && isHeavyNext(b, enemy) ? enemy.heavyAttackName : null,
     coffeesLeft: b.coffeesLeft,
+    testWritten: b.testWritten,
+    attackBonus: b.attackBonus,
+    dodgeChance: dodgeChance(hero.attributes.velocity),
+    traits,
+    reportTo: NPCS[QUESTS[ENCOUNTERS[b.encounterId]?.questId ?? '']?.giverNpcId ?? '']?.name.split(' ')[0] ?? 'the team',
     actions,
   };
 }
@@ -202,6 +281,20 @@ export function getInteractionHint(state: GameState): string | null {
   }
 }
 
+/** "!" over an NPC: a new ticket, something to merge, or a minigame they run for you. */
+function hasSomethingForYou(state: GameState, npcId: string): boolean {
+  const npc = NPCS[npcId]!;
+  const ticketWaiting = npc.gives.some((id) => {
+    const status = state.quests[id]?.status;
+    if (status === 'codeReview' || isQuestAvailable(state, id)) return true;
+    return status === 'inProgress' && QUESTS[id]!.objective.kind === 'minigame';
+  });
+  if (ticketWaiting) return true;
+  // The end-of-act all-hands.
+  const ctx = dialogueContext(state);
+  return npcId === 'gideon' && ctx.questStatus('LUM-33') === 'done' && !ctx.hasFlag('heard-all-hands');
+}
+
 /** Everything Phaser needs to place sprites on the office map. */
 export interface WorldView {
   hero: { x: number; y: number; facing: string };
@@ -213,18 +306,14 @@ export function getWorld(state: GameState): WorldView {
   const { hero } = state;
   return {
     hero: { x: hero.position.x, y: hero.position.y, facing: hero.facing },
-    npcs: Object.values(NPCS).map((n) => {
-      const quest = Object.values(QUESTS).find((q) => q.giverNpcId === n.id);
-      const status = quest ? state.quests[quest.id]?.status : undefined;
-      return {
-        id: n.id,
-        sprite: n.sprite,
-        x: n.position.x,
-        y: n.position.y,
-        facing: n.facing,
-        hasQuestMarker: !!quest && (status === undefined || status === 'todo' || status === 'codeReview'),
-      };
-    }),
+    npcs: Object.values(NPCS).map((n) => ({
+      id: n.id,
+      sprite: n.sprite,
+      x: n.position.x,
+      y: n.position.y,
+      facing: n.facing,
+      hasQuestMarker: hasSomethingForYou(state, n.id),
+    })),
     bugs: activeEncounters(state).map((e) => ({
       encounterId: e.id,
       sprite: ENEMIES[e.enemyId]!.sprite,

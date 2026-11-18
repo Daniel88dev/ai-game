@@ -1,10 +1,11 @@
 import type { Battle } from './combat/battle';
 import type { Dialogue } from './dialogue/dialogue';
+import type { MinigameSession } from './minigames/minigame';
 import { createHero, type Hero } from './hero/hero';
 import type { QuestProgress } from './quest/quest';
 import { HERO_SPAWN } from './world/officeMap';
 
-export type Mode = 'explore' | 'dialogue' | 'battle';
+export type Mode = 'explore' | 'dialogue' | 'battle' | 'minigame';
 
 /**
  * The whole single-player game state. It groups the aggregates
@@ -17,6 +18,9 @@ export interface GameState {
   readonly defeatedEncounters: readonly string[];
   readonly dialogue: Dialogue | null;
   readonly battle: Battle | null;
+  readonly minigame: MinigameSession | null;
+  /** Story flags set by choices (e.g. how you answered Jace). Feed the endings later. */
+  readonly flags: readonly string[];
   readonly rngSeed: number;
   /** Count of commands accepted. Handy for save metadata and debugging. */
   readonly turn: number;
@@ -24,6 +28,7 @@ export interface GameState {
 
 export function modeOf(state: GameState): Mode {
   if (state.battle) return 'battle';
+  if (state.minigame) return 'minigame';
   if (state.dialogue) return 'dialogue';
   return 'explore';
 }
@@ -35,6 +40,8 @@ export function newGame(heroName = 'Sam Rivera', seed = 20261118): GameState {
     defeatedEncounters: [],
     dialogue: null,
     battle: null,
+    minigame: null,
+    flags: [],
     rngSeed: seed,
     turn: 0,
   };

@@ -2,7 +2,19 @@
 export type DialogueEffect =
   | { readonly kind: 'acceptQuest'; readonly questId: string }
   | { readonly kind: 'askClarifying'; readonly questId: string }
-  | { readonly kind: 'turnInQuest'; readonly questId: string };
+  | { readonly kind: 'turnInQuest'; readonly questId: string }
+  | { readonly kind: 'startMinigame'; readonly questId: string }
+  /**
+   * A story choice. Happens once per flag: it shifts the hidden path axes
+   * (Understanding vs Leverage) and can gift tokens.
+   */
+  | {
+      readonly kind: 'storyChoice';
+      readonly flag: string;
+      readonly understanding?: number;
+      readonly leverage?: number;
+      readonly tokens?: number;
+    };
 
 export interface DialogueOption {
   readonly id: string;

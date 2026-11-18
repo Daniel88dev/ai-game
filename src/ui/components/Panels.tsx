@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react';
-import { getCharacter, getQuestLog, modeOf, type QuestStatus } from '../../domain';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
+import { getActProgress, getCharacter, getQuestLog, modeOf, type QuestStatus } from '../../domain';
 import { canSave, SaveError, type SaveSummary } from '../../application/saveGame';
 import { downloadTextFile, readTextFile } from '../../infrastructure/fileTransfer';
 import type { Runtime } from '../../runtime';
@@ -82,7 +82,7 @@ export function MenuPanel({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
         <button className="btn" onClick={() => rt.ui.open('character')}>
           Character <kbd>C</kbd>
         </button>
-        <button className="btn" onClick={save} disabled={!canSave(state)} title={inBattle ? 'Finish the fight first' : ''}>
+        <button className="btn" onClick={save} disabled={!canSave(state)} title={inBattle ? 'Finish the fight first' : !canSave(state) ? 'Finish the minigame first' : ''}>
           Save game
         </button>
         <button className="btn" onClick={exportSave} disabled={!canSave(state)}>
@@ -132,9 +132,11 @@ const COLUMNS: { status: QuestStatus; label: string }[] = [
 ];
 
 export function QuestBoardPanel({ rt }: { rt: Runtime }) {
-  const log = getQuestLog(useGameState(rt));
+  const state = useGameState(rt);
+  const log = getQuestLog(state);
+  const act = getActProgress(state);
   return (
-    <Modal title="LUM board · Sprint 1" onClose={() => rt.ui.close()}>
+    <Modal title={`LUM board · Epic: ${act.epic} (${act.done}/${act.total})`} onClose={() => rt.ui.close()}>
       {log.length === 0 && <p className="muted small">Nothing assigned to you yet. Priya (PM) usually hangs around the meeting table.</p>}
       <div className="kanban">
         {COLUMNS.map((c) => (
@@ -146,18 +148,23 @@ export function QuestBoardPanel({ rt }: { rt: Runtime }) {
                 <article key={q.id} className="card">
                   <div className="card-top">
                     <span className="ticket-key">{q.id}</span>
-                    <span className="chip chip-bug">{q.type}</span>
+                    <span className={`chip chip-${q.type.toLowerCase()}`}>{q.type}</span>
                     <span className="points">{q.storyPoints} SP</span>
+                    {q.bestGrade && <span className="grade-chip">{q.bestGrade}</span>}
                   </div>
                   <div className="card-title">{q.title}</div>
-                  <p className="small muted">{q.description}</p>
-                  <ul className="criteria">
-                    {q.acceptanceCriteria.map((a) => (
-                      <li key={a.text} className={a.met ? 'met' : ''}>
-                        {a.text}
-                      </li>
-                    ))}
-                  </ul>
+                  {q.status !== 'done' && (
+                    <>
+                      <p className="small muted">{q.description}</p>
+                      <ul className="criteria">
+                        {q.acceptanceCriteria.map((a) => (
+                          <li key={a.text} className={a.met ? 'met' : ''}>
+                            {a.text}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
                   <div className="small muted">Reporter: {q.giver}</div>
                 </article>
               ))}
@@ -167,6 +174,8 @@ export function QuestBoardPanel({ rt }: { rt: Runtime }) {
     </Modal>
   );
 }
+
+const GROUP_LABEL = { craft: 'Craft', ai: 'AI', shared: 'Shared' } as const;
 
 export function CharacterPanel({ rt }: { rt: Runtime }) {
   const state = useGameState(rt);
@@ -183,8 +192,16 @@ export function CharacterPanel({ rt }: { rt: Runtime }) {
       </p>
       <table className="attr-table">
         <tbody>
-          {view.attributes.map((a) => (
-            <tr key={a.id}>
+          {view.attributes.map((a, i) => (
+            <Fragment key={a.id}>
+            {(i === 0 || view.attributes[i - 1]!.group !== a.group) && (
+              <tr>
+                <td colSpan={4} className="attr-group">
+                  {GROUP_LABEL[a.group]}
+                </td>
+              </tr>
+            )}
+            <tr>
               <td className="attr-name">{a.label}</td>
               <td className="attr-value">{a.value}</td>
               <td className="small muted">{a.effect}</td>
@@ -199,6 +216,7 @@ export function CharacterPanel({ rt }: { rt: Runtime }) {
                 </button>
               </td>
             </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -210,7 +228,10 @@ export function CharacterPanel({ rt }: { rt: Runtime }) {
         </div>
         <span className="small tone-ai">AI</span>
       </div>
-      <p className="small muted">Reading stack traces and asking questions lean Craft. Asking PILOT leans AI. Both paths are valid.</p>
+      <p className="small muted">
+        Reading stack traces, writing tests and asking questions lean Craft. Asking PILOT leans AI. Both paths are valid, and
+        so is a mix.
+      </p>
     </Modal>
   );
 }
@@ -222,11 +243,40 @@ export function HelpPanel({ rt }: { rt: Runtime }) {
         <li><kbd>WASD</kbd> / <kbd>arrows</kbd> walk, <kbd>E</kbd> / <kbd>Space</kbd> talk or use things.</li>
         <li><kbd>1</kbd>-<kbd>4</kbd> pick dialogue options and battle actions, <kbd>R</kbd> retreats.</li>
         <li><kbd>Q</kbd> Jira board, <kbd>C</kbd> character, <kbd>Esc</kbd> menu (save, load, export, import).</li>
-        <li>Talk to <b>Priya</b> (PM) for a ticket. Fix the bug, then come back so she can merge it.</li>
-        <li>Bugs with a null shell dodge blind fixes. <b>Read the stack trace</b> first, then <b>Debug</b>.</li>
+        <li>People with a <b>!</b> have something for you. Take a ticket, do the work, then come back so they can merge it.</li>
+        <li>Bugs with a shell dodge blind fixes. <b>Read the stack trace</b> first, then <b>Debug</b>.</li>
+        <li><b>Write test</b> softens the bug's hits and stops a regression from coming back.</li>
         <li><b>Ask PILOT</b> hits hard but costs tokens and sometimes hallucinates.</li>
-        <li>The <b>coffee machine</b> by the window heals you and autosaves.</li>
+        <li>Lena and Marta run minigames: a flaky CI release, a coverage crawl and a code review.</li>
+        <li>The <b>coffee machine</b> by the window heals you, tops up your token budget and autosaves.</li>
       </ul>
+    </Modal>
+  );
+}
+
+export function ActCompletePanel({ rt }: { rt: Runtime }) {
+  const state = useGameState(rt);
+  const act = getActProgress(state);
+  const { leaning } = getCharacter(state);
+  const style =
+    leaning < -0.33
+      ? 'You fixed things by understanding them. Marta noticed.'
+      : leaning > 0.33
+        ? 'You shipped fast with PILOT at your side. Jace noticed.'
+        : 'You mixed reading code and leaning on PILOT. Everybody noticed something different.';
+  return (
+    <Modal title="Epic closed" onClose={() => rt.ui.close()}>
+      <div className="act-complete">
+        <h2>{act.title} complete</h2>
+        <p>
+          {state.hero.name}, level {state.hero.level}. {act.done} tickets merged in the {act.epic} epic.
+        </p>
+        <p className="muted">{style}</p>
+        <p>Next: Act II, "The Wave". WREN arrives. Coming in a future update.</p>
+        <button className="btn" onClick={() => rt.ui.close()}>
+          Keep exploring
+        </button>
+      </div>
     </Modal>
   );
 }
@@ -242,6 +292,8 @@ export function Panels({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
       return <CharacterPanel rt={rt} />;
     case 'help':
       return <HelpPanel rt={rt} />;
+    case 'actComplete':
+      return <ActCompletePanel rt={rt} />;
     case 'none':
       return null;
   }

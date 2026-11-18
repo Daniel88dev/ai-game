@@ -39,17 +39,17 @@ describe('LUM-7 quest flow', () => {
     const s: GameState = { ...s0, quests: { 'LUM-7': { status: 'codeReview', clarified: true } }, defeatedEncounters: ['lum7-beetle'] };
     const { state, events } = run(s, { type: 'Interact' }, { type: 'ChooseDialogueOption', optionId: 'merge' });
     expect(types(events)).toContain('QuestCompleted');
-    expect(events.find((e) => e.type === 'QuestCompleted')).toMatchObject({ xp: 80, tokens: 20 });
+    expect(events.find((e) => e.type === 'QuestCompleted')).toMatchObject({ xp: 80, tokens: 15 });
     expect(state.quests['LUM-7']?.status).toBe('done');
     expect(state.hero.level).toBe(2);
     expect(state.hero.unspentPoints).toBe(3);
-    expect(state.hero.tokens).toBe(50);
+    expect(state.hero.tokens).toBe(45);
   });
 
   it('NPC dialogue follows quest state', () => {
     const s0 = facingPriya();
     const s: GameState = { ...s0, quests: { 'LUM-7': { status: 'inProgress', clarified: false } } };
-    expect(run(s, { type: 'Interact' }).state.dialogue?.nodeId).toBe('waiting');
+    expect(run(s, { type: 'Interact' }).state.dialogue?.nodeId).toBe('LUM-7:waiting');
   });
 });
 
@@ -58,5 +58,37 @@ describe('quest board read model', () => {
     const s: GameState = { ...newGame(), quests: { 'LUM-7': { status: 'codeReview', clarified: false } }, defeatedEncounters: ['lum7-beetle'] };
     const criteria = getQuestLog(s)[0]!.acceptanceCriteria;
     expect(criteria.filter((c) => c.met).map((c) => c.text)).toEqual(['The NullPointer Beetle near your desk is fixed']);
+  });
+});
+
+describe('Act I ticket chain', () => {
+  const done = (...ids: string[]) => Object.fromEntries(ids.map((id) => [id, { status: 'done' as const, clarified: false }]));
+
+  it('tickets show up on the board only when their prerequisites are Done', () => {
+    expect(getQuestLog(newGame()).map((q) => q.id)).toEqual(['LUM-7']);
+    const after7: GameState = { ...newGame(), quests: done('LUM-7') };
+    expect(getQuestLog(after7).filter((q) => q.status === 'todo').map((q) => q.id)).toEqual(['LUM-14', 'LUM-22', 'LUM-27']);
+  });
+
+  it('a ticket that is not available cannot be accepted through dialogue', () => {
+    const s0 = facingPriya();
+    const { state } = run({ ...s0, quests: done('LUM-7') }, { type: 'Interact' });
+    expect(state.dialogue?.nodeId).toBe('LUM-14:offer');
+  });
+
+  it('merging LUM-33 completes Act I', () => {
+    const s0 = facingPriya();
+    const quests = { ...done('LUM-7', 'LUM-14', 'LUM-22', 'LUM-27', 'LUM-29', 'LUM-31', 'LUM-35'), 'LUM-33': { status: 'codeReview' as const, clarified: false } };
+    const { events } = run({ ...s0, quests }, { type: 'Interact' }, { type: 'ChooseDialogueOption', optionId: 'merge' });
+    expect(events.find((e) => e.type === 'ActCompleted')).toEqual({ type: 'ActCompleted', act: 1, title: 'Before the Wave' });
+  });
+
+  it('a story choice happens once: flag, path nudge and tokens', () => {
+    const s0 = newGame();
+    const atJace: GameState = { ...s0, hero: { ...s0.hero, position: { x: 11, y: 8 }, facing: 'up' } };
+    const { state, events } = run(atJace, { type: 'Interact' }, { type: 'ChooseDialogueOption', optionId: 'show' });
+    expect(types(events)).toEqual(['DialogueStarted', 'StoryFlagSet', 'PathAffinityShifted', 'TokensGifted', 'DialogueAdvanced']);
+    expect(state.hero.tokens).toBe(s0.hero.tokens + 10);
+    expect(state.flags).toEqual(['jace-prompting']);
   });
 });

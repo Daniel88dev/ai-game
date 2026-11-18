@@ -3,30 +3,45 @@
 A turn-based, pixel-art RPG about a junior developer who starts their career the week the AI era begins.
 Bugs are monsters, Jira tickets are quests, and your attributes decide how well you (and your AI tools) fix things.
 
-This repository holds the **first playable vertical slice**:
+This repository holds **Act I: "Before the Wave"** (Epic: *Lumen 2.0*), about an hour of play:
 
-- Walk around the Lumen Ledger office (tile-based, 4 directions).
-- Talk to **Priya** (PM). She hands you ticket **LUM-7**, "Login crashes for users without an avatar". You can ask a clarifying question first.
-- A **NullPointer Beetle** appears by your desk. Fight it in a turn-based battle:
-  - **Debug**: manual fix, scales with Logic, often slides off the bug's "null shell" until you know the root cause.
-  - **Read stack trace**: costs Focus, reveals the root cause (Debug never misses after that and hits harder).
-  - **Ask PILOT**: AI patch, costs tokens, strong, but can hallucinate and heal the bug.
-  - **Coffee**: restores Focus and some HP (2 cups per fight).
-  - Every third enemy turn is a telegraphed heavy attack.
-- Win, go back to Priya, merge the PR. Gain XP, level up, spend attribute points.
+- Walk around the Lumen Ledger office and talk to six people: **Priya** (PM), **Marta** (Staff Engineer, your mentor),
+  **Lena** (QA), **Kofi** (SRE, on call), **Jace** (the rival junior who ships everything with PILOT) and **Gideon** (CTO).
+- **8 tickets** that unlock in a chain (Bug, Story, Task, Spike), ending in the Act I boss:
+
+  | Ticket | Who | What you do |
+  |---|---|---|
+  | LUM-7 Login crashes for users without an avatar | Priya | Fight the NullPointer Beetle |
+  | LUM-14 Add "Export to CSV" button | Priya | Fight the Off-by-One Imp |
+  | LUM-22 Review Jace's PR #42 | Marta | **Code Review** minigame |
+  | LUM-27 Why does the test suite take 9 minutes? | Lena | **CI Pipeline** minigame (flaky tests) |
+  | LUM-29 Cover the budget calculator with tests | Lena | **Coverage Crawl** minigame |
+  | LUM-31 Dashboard gets slower every hour | Kofi | Fight the Memory Leak Slime (grows every turn) |
+  | LUM-35 The avatar crash is back | Priya | Fight the Regression Revenant (comes back unless you write a test) |
+  | LUM-33 Balance shows -0.00 for some users | Priya | **Boss:** the Heisenbug (hides from debuggers, needs 3 clues from logging) |
+
+- Turn-based fights: **Debug**, **Read stack trace** (clues to the root cause), **Write test** (softens hits, stops
+  regressions), **Ask PILOT** (strong, costs tokens, can hallucinate), **Coffee**. Heavy attacks are telegraphed.
+- All **7 attributes**: Logic, Rigor, Velocity (craft), Prompt Craft, Orchestration (AI), Focus, Domain Insight (shared).
+  They change fights *and* minigames (more release minutes, a suspicious-line heat map, previews of where test inputs go).
+- The **no-AI path is as viable as the AI path**: Focus refills at the coffee machine, and so does your token budget.
+  Bots in `playthrough.test.ts` finish the whole act with a craft-only build and an AI-heavy build.
+- Choices (asking clarifying questions, how you answer Jace and Gideon) and play style feed the hidden
+  Understanding / Leverage axes that will pick the ending.
 - Save and load (localStorage, manual slot + autosave), **export** a save to a `.json` file and **import** it again.
-- The coffee machine heals you and autosaves. Marta (Staff Engineer) gives hints.
+  Saves are versioned; v1 saves from the first slice load and migrate.
 
 ## Play
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # domain + application unit tests (Vitest)
+npm test           # domain + application tests (Vitest), including full Act I playthroughs
+VITE_BALANCE_REPORT=1 npx vitest run playthrough --silent=false   # print a balance report
 npm run build      # typecheck + production build into dist/
 ```
 
-Controls: `WASD`/arrows walk, `E`/`Space` interact, `1`-`4` choose options and actions, `R` retreat, `Q` Jira board, `C` character, `Esc` menu.
+Controls: `WASD`/arrows walk, `E`/`Space` interact, `1`-`5` choose options and actions, `R` retreat, `Q` Jira board, `C` character, `Esc` menu. Minigames are played with the mouse (code review also takes `1`-`4` for the comment type).
 
 ## Architecture
 
@@ -41,7 +56,9 @@ src/
     evolve.ts        evolve(state, event) -> state                   (pure fold, no validation)
     queries.ts       read models for the UI: getHud, getBattle, getDialogue, getQuestLog, getWorld, ...
     hero/ quest/ combat/ dialogue/ world/   aggregates and value objects
-    content/         data: NPCs + dialogue trees, quests, enemies, encounters
+    minigames/       one bounded context per minigame (ciPipeline, coverage, codeReview), each a pure
+                     start/decide/evolve module behind a small registry; views.ts = their read models
+    content/         data: NPCs + dialogue trees, quests (Act I chain), enemies, encounters
     shared/rng.ts    seeded PRNG; the seed is part of the state, so fights are reproducible
   application/
     gameService.ts   command bus + event publisher (dispatch -> decide -> evolve -> publish)
@@ -64,7 +81,9 @@ The flow is a classic "decider":
 
 The battle scene replays each event through the domain's own `evolve`, so the HP bars move step by step (your hit first, then the bug's answer) without duplicating any rule in the view.
 
-Saves are state snapshots with a `format` + `version` header and a validator, and a `migrate()` hook for future versions.
+Saves are state snapshots with a `format` + `version` header, a validator, and `migrate()` steps (v1 -> v2 adds the three new attributes and story flags).
+
+Minigames follow the contract from `design/minigames.md` §18: the core starts a session from a hero snapshot, routes `PlayMinigame` moves to the minigame's own decider, and only learns the final grade (`MinigameFinished`). Minigame events carry their own `cost` (tokens, Focus) that the root `evolve` applies to the hero.
 
 ### Art
 

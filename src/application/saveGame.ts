@@ -1,12 +1,15 @@
-import { ATTRIBUTES, newGame, type GameState } from '../domain';
+import { ATTRIBUTES, ATTRIBUTES_ADDED_IN_V2, GRADE_RANK, HERO_SPAWN, isWalkableTile, newGame, npcAt, type GameState } from '../domain';
 
 /**
  * Save file format. Versioned so later releases can migrate old saves.
  * A save is a snapshot of GameState (not an event log): smaller, and safe
  * when game rules change between versions.
+ *
+ *   v1  first slice: 4 attributes
+ *   v2  Act I: 7 attributes, story flags, minigame grades on tickets
  */
 export const SAVE_FORMAT = 'merge-conflict-save';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveFile {
   readonly format: typeof SAVE_FORMAT;
@@ -34,7 +37,7 @@ export interface SaveStore {
 export class SaveError extends Error {}
 
 export function canSave(state: GameState): boolean {
-  return state.battle === null;
+  return state.battle === null && state.minigame === null;
 }
 
 export function toSaveFile(state: GameState, now: Date): SaveFile {
@@ -43,7 +46,7 @@ export function toSaveFile(state: GameState, now: Date): SaveFile {
 }
 
 export function serialize(state: GameState, now: Date = new Date()): string {
-  if (!canSave(state)) throw new SaveError('You cannot save during a fight.');
+  if (!canSave(state)) throw new SaveError(state.battle ? 'You cannot save during a fight.' : 'Finish the minigame first.');
   return JSON.stringify(toSaveFile(state, now), null, 2);
 }
 
@@ -68,9 +71,19 @@ export function deserialize(raw: string): SaveFile {
   return { format: SAVE_FORMAT, version: SAVE_VERSION, savedAt: isStr(data.savedAt) ? data.savedAt : new Date(0).toISOString(), state };
 }
 
-/** Hook for future format changes: migrate(v1 -> v2 -> ...). */
-function migrate(_version: number, state: unknown): unknown {
-  return state;
+/** Upgrades an older save step by step: v1 -> v2 -> ... */
+export function migrate(version: number, state: unknown): unknown {
+  let s = state;
+  if (version < 2) s = v1ToV2(s);
+  return s;
+}
+
+/** v2 added Velocity, Orchestration and Domain Insight (start at 1) and story flags. */
+function v1ToV2(state: unknown): unknown {
+  if (!isObj(state) || !isObj(state.hero) || !isObj(state.hero.attributes)) return state;
+  const attributes = { ...state.hero.attributes };
+  for (const a of ATTRIBUTES_ADDED_IN_V2) if (!isNum(attributes[a])) attributes[a] = 1;
+  return { ...state, hero: { ...state.hero, attributes }, flags: Array.isArray(state.flags) ? state.flags : [] };
 }
 
 function validateState(s: unknown): GameState {
@@ -92,13 +105,19 @@ function validateState(s: unknown): GameState {
     if (!isObj(q) || !isStr(q.status) || !['todo', 'inProgress', 'codeReview', 'done'].includes(q.status) || typeof q.clarified !== 'boolean') {
       return fail('quest');
     }
+    if (q.bestGrade !== undefined && !(isStr(q.bestGrade) && q.bestGrade in GRADE_RANK)) return fail('quest grade');
   }
   if (!Array.isArray(s.defeatedEncounters) || !s.defeatedEncounters.every(isStr)) return fail('encounters');
+  if (!Array.isArray(s.flags) || !s.flags.every(isStr)) return fail('flags');
   if (!isNum(s.rngSeed)) return fail('seed');
   const base = newGame();
+  const hero = h as unknown as GameState['hero'];
+  // The office changes between versions; never load the hero inside a desk or an NPC.
+  const position = isWalkableTile(hero.position) && !npcAt(hero.position) ? hero.position : HERO_SPAWN;
   return {
     ...base,
-    hero: h as unknown as GameState['hero'],
+    hero: { ...hero, position },
+    flags: s.flags as string[],
     quests: s.quests as GameState['quests'],
     defeatedEncounters: s.defeatedEncounters as string[],
     rngSeed: s.rngSeed,
