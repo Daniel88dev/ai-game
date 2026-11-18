@@ -307,3 +307,13 @@ kbd {
 .audit-info { line-height: 1.7; }
 .diff-reveal.reveal-ok { color: var(--green); }
 .diff-reveal.reveal-bad { color: var(--red); }
+
+/* Audio settings (menu and title screen) */
+.audio-controls { display: grid; gap: 0.6cqw; }
+.audio-row { display: grid; grid-template-columns: 14cqw 1fr; gap: 1cqw; align-items: center; }
+.audio-toggle { text-align: left; color: var(--fog); }
+.audio-toggle.is-on { color: var(--green); border-color: var(--green-d); }
+.audio-slider { width: 100%; accent-color: var(--cyan); height: 1.2cqw; }
+.audio-slider:disabled { opacity: 0.4; }
+.audio-compact { margin-top: 0.6cqw; padding-top: 0.8cqw; border-top: 1px solid var(--dusk); }
+.audio-compact .audio-row { grid-template-columns: 13cqw 1fr; }
