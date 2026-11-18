@@ -45,6 +45,10 @@ This repository holds **Act I: "Before the Wave"** (Epic: *Lumen 2.0*) and **Act
   Bots in `playthrough.test.ts` finish both acts with a craft-only build and an AI-heavy build.
 - Choices (asking clarifying questions, how you answer Jace and Gideon) and play style feed the hidden
   Understanding / Leverage axes that will pick the ending.
+- **Music and sound effects**, all synthesized in the browser (no audio files): five chiptune songs (title, office,
+  battle, boss, minigames) and about 30 effects for buttons, dialogue choices, hits on bugs, hits on you, quests and
+  level-ups. Toggle music with `M`; music and sound effects each have an on/off switch and a volume slider in the menu
+  and on the title screen. The setting is stored in this browser, not in the save file.
 - Save and load (localStorage, manual slot + autosave), **export** a save to a `.json` file and **import** it again.
   Saves are versioned; v1 saves from the first slice load and migrate.
 
@@ -58,7 +62,7 @@ VITE_BALANCE_REPORT=1 npx vitest run playthrough --silent=false   # print a bala
 npm run build      # typecheck + production build into dist/
 ```
 
-Controls: `WASD`/arrows walk, `E`/`Space` interact, `1`-`5` choose options and actions, `R` retreat, `Q` Jira board, `C` character, `Esc` menu. Minigames are played with the mouse (code review also takes `1`-`4` for the comment type); the Typing Sprint is played on the keyboard.
+Controls: `WASD`/arrows walk, `E`/`Space` interact, `1`-`5` choose options and actions, `R` retreat, `Q` Jira board, `C` character, `M` music on/off, `Esc` menu. Minigames are played with the mouse (code review also takes `1`-`4` for the comment type); the Typing Sprint is played on the keyboard.
 
 ## Architecture
 
@@ -83,6 +87,8 @@ src/
     saveGame.ts      save file format (versioned + validated), SaveStore port, save/load/export/import use cases
     autosave.ts      autosave policy (which events trigger it)
   infrastructure/    adapters: localStorage SaveStore, file download/upload
+  audio/             WebAudio synth (pulse/triangle/noise), sound effects, chiptune tracks written as tracker patterns,
+                     a lookahead sequencer, cues.ts (domain events -> sounds), settings stored next to the saves
   game/              Phaser 4: textures generated from pixel grids, OfficeScene, BattleScene
   ui/                React 19 overlay: HUD, dialogue, battle panel, menu, quest board, character sheet
   runtime.ts         composition root
@@ -101,6 +107,16 @@ The battle scene replays each event through the domain's own `evolve`, so the HP
 Saves are state snapshots with a `format` + `version` header, a validator, and `migrate()` steps (v1 -> v2 adds the three new attributes and story flags).
 
 Minigames follow the contract from `design/minigames.md` §18: the core starts a session from a hero snapshot, routes `PlayMinigame` moves to the minigame's own decider, and only learns the final grade (`MinigameFinished`). Minigame events carry their own `cost` (tokens, Focus) that the root `evolve` applies to the hero.
+
+### Audio
+
+Sound is a projection of the event stream, like the battle log: `audio/cues.ts` maps domain events to sound effects
+and the current mode to a song; the domain does not know audio exists. Outside fights `runtime.ts` plays the most
+important cue of each command's events; during a fight `BattleScene` plays each cue in step with its animation (the
+hit sound lands when the sprite flashes). Every `<button>` clicks through one delegated listener (`data-sfx="none"`
+opts out, `data-sfx="coin"` picks another sound). Nothing plays until the first click or key press (browser autoplay
+rules), and the AudioContext is suspended while the tab is hidden. Everything is generated in code, so there is
+nothing to license. Songs are short tracker patterns in `audio/tracks.ts` (`'E5 . G5 . C6 . B5 .'`) over a chord list.
 
 ### Art
 

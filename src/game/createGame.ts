@@ -17,6 +17,8 @@ export function createPhaserGame(parent: HTMLElement, rt: Runtime): Phaser.Game 
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { keyboard: true },
     scene: [new BootScene(), new OfficeScene(rt), new BattleScene(rt)],
+    // Sound is ours (src/audio); Phaser would otherwise open a second AudioContext.
+    audio: { noAudio: true },
     banner: false,
   });
 }

@@ -11,9 +11,14 @@ import { Panels } from './components/Panels';
 import { Toasts } from './components/Toasts';
 import { TitleScreen } from './components/TitleScreen';
 import { useGameState } from './hooks';
+import { musicFor } from '../audio/cues';
 
 export function App({ rt }: { rt: Runtime }) {
   const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    if (!playing) rt.audio.setMusic('title');
+  }, [rt, playing]);
 
   const start = useCallback(
     (state: GameState) => {
@@ -55,7 +60,10 @@ function GameStage({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
       const panel = rt.ui.get().panel;
       // Minigames (the typing sprint) need the letter keys.
       if (key !== 'escape' && modeOf(rt.game.getState()) === 'minigame') return;
-      if (key === 'escape') {
+      if (key === 'm' && !(e.target instanceof HTMLInputElement)) {
+        rt.audio.toggleMusic();
+        rt.ui.toast(`Music ${rt.audio.getSettings().musicOn ? 'on' : 'off'}`, 'info');
+      } else if (key === 'escape') {
         e.preventDefault();
         if (panel === 'none') rt.ui.open('menu');
         else rt.ui.close();
@@ -80,6 +88,7 @@ function GameStage({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
         <BattlePanel rt={rt} />
         <MinigamePanel rt={rt} />
         <Toasts rt={rt} />
+        <MusicDirector rt={rt} />
         <MenuButton rt={rt} />
         <Panels
           rt={rt}
@@ -91,6 +100,13 @@ function GameStage({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
       </div>
     </>
   );
+}
+
+/** Picks the song for what is on screen: office, battle, boss or minigame. */
+function MusicDirector({ rt }: { rt: Runtime }) {
+  const track = musicFor(useGameState(rt));
+  useEffect(() => rt.audio.setMusic(track), [rt, track]);
+  return null;
 }
 
 function MenuButton({ rt }: { rt: Runtime }) {

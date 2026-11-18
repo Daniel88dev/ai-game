@@ -4,6 +4,7 @@ import { canSave, SaveError, type SaveSummary } from '../../application/saveGame
 import { downloadTextFile, readTextFile } from '../../infrastructure/fileTransfer';
 import type { Runtime } from '../../runtime';
 import { useGameState, useUi } from '../hooks';
+import { AudioControls } from './AudioControls';
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
@@ -96,6 +97,9 @@ export function MenuPanel({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
         </button>
       </div>
       <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(e) => importSave(e.target.files?.[0])} />
+
+      <h3 className="section-title">Audio</h3>
+      <AudioControls rt={rt} />
 
       <h3 className="section-title">Load</h3>
       {saves.length === 0 ? (
@@ -242,7 +246,8 @@ export function HelpPanel({ rt }: { rt: Runtime }) {
       <ul className="help">
         <li><kbd>WASD</kbd> / <kbd>arrows</kbd> walk, <kbd>E</kbd> / <kbd>Space</kbd> talk or use things.</li>
         <li><kbd>1</kbd>-<kbd>4</kbd> pick dialogue options and battle actions, <kbd>R</kbd> retreats.</li>
-        <li><kbd>Q</kbd> Jira board, <kbd>C</kbd> character, <kbd>Esc</kbd> menu (save, load, export, import).</li>
+        <li><kbd>Q</kbd> Jira board, <kbd>C</kbd> character, <kbd>Esc</kbd> menu (save, load, export, import, audio).</li>
+        <li><kbd>M</kbd> turns the music on or off. Volumes and the sound effects switch are in the menu.</li>
         <li>People with a <b>!</b> have something for you. Take a ticket, do the work, then come back so they can merge it.</li>
         <li>Bugs with a shell dodge blind fixes. <b>Read the stack trace</b> first, then <b>Debug</b>.</li>
         <li><b>Write test</b> softens the bug's hits and stops a regression from coming back.</li>

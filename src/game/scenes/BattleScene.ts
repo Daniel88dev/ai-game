@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ENEMIES, evolve, hasWren, maxFocus, maxHp, type DomainEvent, type GameState } from '../../domain';
 import type { Runtime } from '../../runtime';
+import { cueFor } from '../../audio/cues';
 import { hex } from '../gfx/palette';
 import { FONT, VIEW_WIDTH } from '../constants';
 
@@ -151,6 +152,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private animate(e: DomainEvent, s: GameState) {
+    // The win jingle already says "ticket ready"; a level-up gets its fanfare once the jingle ends.
+    if (e.type === 'LeveledUp') this.rt.audio.playCue(cueFor(e), 0.9);
+    else if (e.type !== 'QuestReadyForReview') this.rt.audio.playCue(cueFor(e));
     switch (e.type) {
       case 'HeroDebugged':
         this.lunge(this.hero, 1);

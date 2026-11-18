@@ -36,7 +36,7 @@ export function DialogueBox({ rt }: { rt: Runtime }) {
       <ol className="options">
         {view.options.map((o, i) => (
           <li key={o.id}>
-            <button className="option" onClick={() => rt.game.dispatch({ type: 'ChooseDialogueOption', optionId: o.id })}>
+            <button className="option" data-sfx="none" onClick={() => rt.game.dispatch({ type: 'ChooseDialogueOption', optionId: o.id })}>
               <kbd>{i + 1}</kbd> {o.label}
             </button>
           </li>

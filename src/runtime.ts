@@ -4,7 +4,9 @@ import { SaveGameService } from './application/saveGame';
 import { shouldAutosave } from './application/autosave';
 import { LocalStorageSaveStore, MemorySaveStore } from './infrastructure/localStorageSaveStore';
 import { UiStore } from './ui/uiStore';
-import type { SaveStore } from './application/saveGame';
+import { AudioEngine } from './audio/audioEngine';
+import { AudioSettingsStore } from './audio/audioSettings';
+import { isAnimatedByBattleScene, pickCue } from './audio/cues';
 
 /**
  * Composition root: wires domain, application services and adapters together.
@@ -15,28 +17,34 @@ export interface Runtime {
   readonly battleLog: BattleLogProjection;
   readonly saves: SaveGameService;
   readonly ui: UiStore;
+  readonly audio: AudioEngine;
 }
 
-function pickStore(): SaveStore {
+function usableLocalStorage(): Storage | null {
   try {
     const probe = '__merge_conflict_probe__';
     window.localStorage.setItem(probe, '1');
     window.localStorage.removeItem(probe);
-    return new LocalStorageSaveStore();
+    return window.localStorage;
   } catch {
-    return new MemorySaveStore();
+    return null;
   }
 }
 
 export function createRuntime(): Runtime {
   const game = new GameService();
   const battleLog = new BattleLogProjection();
-  const saves = new SaveGameService(pickStore());
+  const storage = usableLocalStorage();
+  const saves = new SaveGameService(storage ? new LocalStorageSaveStore(storage) : new MemorySaveStore());
   const ui = new UiStore();
+  // Audio settings sit next to the save slots in localStorage, never inside a save file.
+  const audio = new AudioEngine(new AudioSettingsStore(storage));
 
   game.onEvents((events, state) => {
     battleLog.apply(events);
     ui.reactTo(events);
+    // During a fight the battle scene plays each sound in step with its animation.
+    if (!isAnimatedByBattleScene(events, state)) audio.playCue(pickCue(events));
     if (shouldAutosave(events)) {
       try {
         saves.save(state, 'auto');
@@ -47,5 +55,5 @@ export function createRuntime(): Runtime {
     }
   });
 
-  return { game, battleLog, saves, ui };
+  return { game, battleLog, saves, ui, audio };
 }

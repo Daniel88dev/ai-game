@@ -3,6 +3,7 @@ import { newGame, type GameState } from '../../domain';
 import { SaveError } from '../../application/saveGame';
 import { readTextFile } from '../../infrastructure/fileTransfer';
 import type { Runtime } from '../../runtime';
+import { AudioControls } from './AudioControls';
 
 export function TitleScreen({ rt, onStart }: { rt: Runtime; onStart: (state: GameState) => void }) {
   const [name, setName] = useState('Sam Rivera');
@@ -56,6 +57,7 @@ export function TitleScreen({ rt, onStart }: { rt: Runtime; onStart: (state: Gam
         </button>
         <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(e) => importSave(e.target.files?.[0])} />
         {error && <p className="small tone-bad">{error}</p>}
+        <AudioControls rt={rt} compact />
       </form>
       <p className="muted small footer-note">Saves stay in this browser. Export them from the menu to keep a file.</p>
     </div>
