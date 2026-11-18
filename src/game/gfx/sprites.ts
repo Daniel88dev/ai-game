@@ -216,6 +216,96 @@ export const HEISENBUG = pad([
 /** Second frame: half of it is not there. That is the point. */
 const HEISENBUG_FLICKER = HEISENBUG.map((row, y) => [...row].map((ch, x) => ((x + y) % 2 === 0 ? '.' : ch)).join(''));
 
+// ------------------------------------------------------------------ Act II: AI-era bugs
+
+/** Looks like a harmless block of code. Until it opens. */
+export const MIMIC = pad([
+  '',
+  '',
+  '',
+  '..kkkkkkkkkkkk',
+  '.kllllllllllllk',
+  '.klcckllgggllk',
+  '.kllllllllllllk',
+  '.klggglllccllk',
+  '.kkkkkkkkkkkkkk',
+  '.kmmmmmmmmmmmmk',
+  '.kmllllllllllmk',
+  '.kmmmmmmmmmmmmk',
+  '.kkkkkkkkkkkkkk',
+  '..k..........k',
+], 16, 16);
+
+const MIMIC_OPEN = pad([
+  '',
+  '..kkkkkkkkkkkk',
+  '.kllllllllllllk',
+  '.klcckllgggllk',
+  '.kllllllllllllk',
+  '.kkkkkkkkkkkkkk',
+  '.kwkykwkwkykwkk',
+  '.krrrrrrrrrrrrk',
+  '.kwkwkwkwkwkwkk',
+  '.kmmmmmmmmmmmmk',
+  '.kmllllllllllmk',
+  '.kmmmmmmmmmmmmk',
+  '.kkkkkkkkkkkkkk',
+  '..k..........k',
+], 16, 16);
+
+/** Stone, shiny, wearing its own green checkmark. */
+export const GOLEM = pad([
+  '',
+  '.....kkkkkk',
+  '....kllllllk',
+  '....klylylk',
+  '....kllkkllk',
+  '..kkkkllllkkkk',
+  '.klllkkkkkklllk',
+  '.klgkwwwwwwkglk',
+  '.klgkwwwwwGkglk',
+  '.kllkwGwwGwkllk',
+  '.kllkwwGGwwkllk',
+  '..kkkkkkkkkkkk',
+  '...kgggkkgggk',
+  '...kgggk.kgggk',
+  '..kkkkk..kkkkk',
+], 16, 16);
+
+const GOLEM_SHINE = swap(GOLEM, { y: 'o', l: 'w' }).map((row, y) => (y < 5 ? row : GOLEM[y]!));
+
+/** Many small identical bugs. Stamped, of course. */
+function stamp(spots: [number, number][]): Grid {
+  const g = Array.from({ length: 16 }, () => [...'.'.repeat(16)]);
+  const mini = ['k..k', 'kook', '.kk.'];
+  for (const [x, y] of spots)
+    mini.forEach((row, dy) => [...row].forEach((ch, dx) => ch !== '.' && (g[y + dy]![x + dx] = ch)));
+  return g.map((r) => r.join(''));
+}
+export const SWARM = stamp([[1, 2], [9, 1], [5, 6], [11, 7], [1, 11], [7, 12], [12, 12]]);
+const SWARM_MOVE = stamp([[2, 3], [10, 2], [4, 7], [11, 6], [2, 12], [8, 11], [12, 13]]);
+
+/** A ghost wearing a library's logo. Its lower half is not quite there. */
+export const PHANTOM = pad([
+  '',
+  '.....kkkkkk',
+  '....kwwwwwwk',
+  '...kwwwwwwwwk',
+  '..kwwkkwwkkwwk',
+  '..kwwkpwwkpwwk',
+  '..kwwwwwwwwwwk',
+  '..kwwwkkkkwwwk',
+  '..kwwwwwwwwwwk',
+  '..kwlwwwwwwlwk',
+  '..kwlwkppkwlwk',
+  '..kwwwkppkwwwk',
+  '..kwwwwwwwwwwk',
+  '..kwkwwkkwwkwk',
+  '..kk.kk..kk.kk',
+], 16, 16);
+
+const PHANTOM_FADE = PHANTOM.map((row, y) => (y < 8 ? row : [...row].map((ch, x) => ((x + y) % 2 === 0 ? '.' : ch)).join('')));
+
 export const DRONE = pad([
   '',
   '.......kk',
@@ -242,6 +332,9 @@ const KOFI_SWAP = { h: 'k', s: 'X', S: 'h', b: 'o', B: 'O', c: 'y', m: 'd' };
 const JACE_SWAP = { h: 'y', b: 'c', B: 'C', c: 'w', m: 'g' };
 const GIDEON_SWAP = { h: 'l', b: 'd', B: 'm', c: 'p', m: 'g', w: 'k' };
 const REVENANT_SWAP = { r: 'l', R: 'g', w: 'c' };
+const TOMAS_SWAP = { h: 'g', s: 'S', S: 'X', b: 'y', B: 'o', c: 'w', m: 'x' };
+/** WREN: PILOT's drone, upgraded to a blue agent shell. */
+const WREN_SWAP = { m: 'b', d: 'B' };
 
 export interface SpriteDef {
   key: string;
@@ -271,6 +364,7 @@ export const SPRITES: SpriteDef[] = [
   ...characterSet('npc_kofi', KOFI_SWAP),
   ...characterSet('npc_jace', JACE_SWAP),
   ...characterSet('npc_gideon', GIDEON_SWAP),
+  ...characterSet('npc_tomas', TOMAS_SWAP),
   { key: 'bug_null_pointer', grid: BEETLE },
   { key: 'bug_null_pointer_1', grid: BEETLE_STEP },
   { key: 'bug_off_by_one', grid: IMP },
@@ -281,7 +375,16 @@ export const SPRITES: SpriteDef[] = [
   { key: 'bug_regression_1', grid: swap(BEETLE_STEP, REVENANT_SWAP) },
   { key: 'bug_heisenbug', grid: HEISENBUG },
   { key: 'bug_heisenbug_1', grid: HEISENBUG_FLICKER },
+  { key: 'bug_mimic', grid: MIMIC },
+  { key: 'bug_mimic_1', grid: MIMIC_OPEN },
+  { key: 'bug_golem', grid: GOLEM },
+  { key: 'bug_golem_1', grid: GOLEM_SHINE },
+  { key: 'bug_swarm', grid: SWARM },
+  { key: 'bug_swarm_1', grid: SWARM_MOVE },
+  { key: 'bug_phantom', grid: PHANTOM },
+  { key: 'bug_phantom_1', grid: PHANTOM_FADE },
   { key: 'drone', grid: DRONE },
+  { key: 'drone_wren', grid: swap(DRONE, WREN_SWAP) },
   { key: 'marker', grid: MARKER },
   { key: 'check', grid: CHECK },
 ];

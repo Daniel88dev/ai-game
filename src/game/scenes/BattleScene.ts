@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ENEMIES, evolve, maxFocus, maxHp, type DomainEvent, type GameState } from '../../domain';
+import { ENEMIES, evolve, hasWren, maxFocus, maxHp, type DomainEvent, type GameState } from '../../domain';
 import type { Runtime } from '../../runtime';
 import { hex } from '../gfx/palette';
 import { FONT, VIEW_WIDTH } from '../constants';
@@ -52,7 +52,8 @@ export class BattleScene extends Phaser.Scene {
     this.add.ellipse(ENEMY_X, GROUND_Y + 2, 56, 10, hex('k'));
 
     this.hero = this.add.sprite(HERO_X, GROUND_Y, 'hero_side_0').setOrigin(0.5, 1).setScale(3);
-    this.drone = this.add.image(HERO_X - 52, GROUND_Y - 78, 'drone').setScale(2);
+    // PILOT is a small drone; WREN (Act II on) is the bigger agent build.
+    this.drone = this.add.image(HERO_X - 52, GROUND_Y - 78, hasWren(this.rt.game.getState()) ? 'drone_wren' : 'drone').setScale(2);
     this.tweens.add({ targets: this.drone, y: this.drone.y - 5, yoyo: true, repeat: -1, duration: 700, ease: 'Sine.inOut' });
     this.enemy = this.add.sprite(ENEMY_X, GROUND_Y, enemyDef.sprite).setOrigin(0.5, 1).setScale(4).setFlipX(true);
     this.enemy.play(`${enemyDef.sprite}_idle`);
@@ -157,6 +158,7 @@ export class BattleScene extends Phaser.Scene {
         else {
           this.hit(this.enemy);
           this.popup(ENEMY_X, `-${e.damage}${e.critical ? '!' : ''}`, e.critical ? '#f7e26b' : '#e8e6f0');
+          if (e.absorbed) this.popup(ENEMY_X, 'ARMOR', '#9d99bd', 34);
         }
         break;
       case 'StackTraceRead':
@@ -180,6 +182,10 @@ export class BattleScene extends Phaser.Scene {
       case 'EnemyGrew':
         this.tweens.add({ targets: this.enemy, scale: 4 + Math.min(2, e.attackBonus * 0.2), duration: 300, ease: 'Back.out' });
         this.popup(ENEMY_X, `+${e.attackBonus} ATK`, '#f5a524', 34);
+        break;
+      case 'EnemyRegenerated':
+        this.tweens.add({ targets: this.enemy, scaleX: '+=0.3', yoyo: true, duration: 150 });
+        this.popup(ENEMY_X, `+${e.amount}`, '#46c46e', 34);
         break;
       case 'EnemyRevived':
         this.enemy.setAlpha(0.2);

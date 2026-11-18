@@ -79,3 +79,48 @@ describe('Velocity', () => {
     expect(dodges).toBeLessThan(70);
   });
 });
+
+describe('Act II bugs', () => {
+  const sure = { ...newGame().hero.attributes, logic: 5, velocity: 0 };
+
+  it('the Confident Golem shrugs off most of a hit until its claims are checked', () => {
+    const hit = (revealed: boolean) =>
+      act(fighting('lum118-golem', 3, { rootCauseRevealed: revealed }, { attributes: sure, hp: 99 }), 'debug').events.find(
+        (e): e is Extract<DomainEvent, { type: 'HeroDebugged' }> => e.type === 'HeroDebugged',
+      )!;
+    const armored = hit(false);
+    expect(armored.absorbed).toBeGreaterThan(0);
+    expect(hit(true).absorbed).toBeUndefined();
+    expect(getBattle(fighting('lum118-golem'))!.traits.join(' ')).toContain('Armored');
+  });
+
+  it('the Copy-Paste Swarm regrows until a test exists', () => {
+    const hurt = fighting('lum124-swarm', 2, { enemyHp: 50 }, { attributes: sure, hp: 99 });
+    expect(types(act(hurt, 'coffee').events)).toContain('EnemyRegenerated');
+    expect(types(act({ ...hurt, battle: { ...hurt.battle!, testWritten: true } }, 'coffee').events)).not.toContain('EnemyRegenerated');
+  });
+
+  it('the Phantom Package regrows until its source is verified twice', () => {
+    const s = fighting('lum150-phantom', 2, { enemyHp: 100 }, { attributes: sure, hp: 99 });
+    expect(getBattle(s)!.actions.find((a) => a.id === 'investigate')!.label).toBe('Verify source');
+    expect(getBattle(s)!.cluesNeeded).toBe(2);
+    expect(types(act(s, 'coffee').events)).toContain('EnemyRegenerated');
+    expect(types(act({ ...s, battle: { ...s.battle!, rootCauseRevealed: true } }, 'coffee').events)).not.toContain('EnemyRegenerated');
+  });
+
+  it('once LUM-102 is merged, PILOT becomes WREN and its patches hit harder', () => {
+    const pilot = fighting('lum109-mimic', 5, {}, { hp: 99, tokens: 99 });
+    const wren: GameState = { ...pilot, quests: { ...pilot.quests, 'LUM-102': { status: 'done', clarified: false } } };
+    expect(getBattle(pilot)!.actions.find((a) => a.id === 'askAi')!.label).toBe('Ask PILOT');
+    expect(getBattle(wren)!.actions.find((a) => a.id === 'askAi')!.label).toBe('Ask WREN');
+    const dmg = (s: GameState) => {
+      for (let seed = 1; seed < 50; seed++) {
+        const e = act({ ...s, rngSeed: seed }, 'askAi').events.find((x) => x.type === 'AiPatchApplied');
+        if (e?.type === 'AiPatchApplied') return { damage: e.damage, by: e.by };
+      }
+      throw new Error('always hallucinated');
+    };
+    expect(dmg(pilot).by).toBe('PILOT');
+    expect(dmg(wren).by).toBe('WREN');
+  });
+});

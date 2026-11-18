@@ -15,6 +15,8 @@ export interface HeroSnapshot {
   readonly attributes: Attributes;
   readonly tokens: number;
   readonly focusPoints: number;
+  /** Hallucination chance taken off by good agent context (LUM-140). */
+  readonly clarity?: number;
 }
 
 /** Resources a minigame event spends from the hero. The root evolve applies them. */

@@ -20,3 +20,6 @@ export { ENEMIES } from './content/enemies';
 export { NPCS } from './content/npcs';
 export { QUESTS, QUEST_ORDER } from './content/quests';
 export { ENCOUNTERS } from './content/encounters';
+export { TYPING_TEXTS, typingTextFor, type TypingMove } from './minigames/typing';
+export { PACKAGES, type AuditMove, type PackageVerdict } from './minigames/packageAudit';
+export { aiName, hasWren } from './wren';

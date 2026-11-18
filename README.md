@@ -3,11 +3,12 @@
 A turn-based, pixel-art RPG about a junior developer who starts their career the week the AI era begins.
 Bugs are monsters, Jira tickets are quests, and your attributes decide how well you (and your AI tools) fix things.
 
-This repository holds **Act I: "Before the Wave"** (Epic: *Lumen 2.0*), about an hour of play:
+This repository holds **Act I: "Before the Wave"** (Epic: *Lumen 2.0*) and **Act II: "The Wave"** (Epic: *AI-First Transformation*), about two hours of play:
 
-- Walk around the Lumen Ledger office and talk to six people: **Priya** (PM), **Marta** (Staff Engineer, your mentor),
-  **Lena** (QA), **Kofi** (SRE, on call), **Jace** (the rival junior who ships everything with PILOT) and **Gideon** (CTO).
-- **8 tickets** that unlock in a chain (Bug, Story, Task, Spike), ending in the Act I boss:
+- Walk around the Lumen Ledger office and talk to seven people: **Priya** (PM), **Marta** (Staff Engineer, your mentor),
+  **Lena** (QA), **Kofi** (SRE, on call), **Jace** (the rival junior who ships everything with PILOT), **Gideon** (CTO)
+  and **Tomás** (office manager, keeper of the kitchen).
+- **Act I: 8 tickets** that unlock in a chain (Bug, Story, Task, Spike), ending in the Act I boss:
 
   | Ticket | Who | What you do |
   |---|---|---|
@@ -20,12 +21,28 @@ This repository holds **Act I: "Before the Wave"** (Epic: *Lumen 2.0*), about an
   | LUM-35 The avatar crash is back | Priya | Fight the Regression Revenant (comes back unless you write a test) |
   | LUM-33 Balance shows -0.00 for some users | Priya | **Boss:** the Heisenbug (hides from debuggers, needs 3 clues from logging) |
 
+- **Act II: 7 tickets.** The company goes AI-first, PILOT becomes **WREN** (a real agent, stronger patches), and
+  AI-era bugs show up, born from code nobody read:
+
+  | Ticket | Who | What you do |
+  |---|---|---|
+  | LUM-102 Enable AI assistant for all engineers | Gideon | **Typing Sprint** minigame: type WREN's config on your keyboard |
+  | LUM-109 Insights page calls an API that does not exist | Priya | Fight the Hallucination Mimic (confuses AI patches) |
+  | LUM-118 Build budgeting insights with AI | Priya | Fight the Confident Golem (armored until you check its claims) |
+  | LUM-124 Same date bug in twelve places | Lena | Fight the Copy-Paste Swarm (regrows until you write a test) |
+  | LUM-131 Remove unused package lodash-utils-pro | Kofi | **Package Audit** minigame: find the typosquat, the hallucinated package and the malware |
+  | LUM-140 Write onboarding doc for agents (optional) | Marta | **Typing Sprint**: AGENTS.md. Afterwards WREN hallucinates less |
+  | LUM-150 Production is installing lodash-utils-pro | Kofi | **Boss:** the Phantom Package (regrows until you verify its source twice) |
+
+  Story beats: Jace offers his "just prompt it" mega-prompt, Marta's rooftop talk (encourage her, doubt her, or show her
+  WREN: a major path flag), and Gideon's second all-hands, where a third of the team is cut. Tomás does not stay.
+
 - Turn-based fights: **Debug**, **Read stack trace** (clues to the root cause), **Write test** (softens hits, stops
   regressions), **Ask PILOT** (strong, costs tokens, can hallucinate), **Coffee**. Heavy attacks are telegraphed.
 - All **7 attributes**: Logic, Rigor, Velocity (craft), Prompt Craft, Orchestration (AI), Focus, Domain Insight (shared).
   They change fights *and* minigames (more release minutes, a suspicious-line heat map, previews of where test inputs go).
 - The **no-AI path is as viable as the AI path**: Focus refills at the coffee machine, and so does your token budget.
-  Bots in `playthrough.test.ts` finish the whole act with a craft-only build and an AI-heavy build.
+  Bots in `playthrough.test.ts` finish both acts with a craft-only build and an AI-heavy build.
 - Choices (asking clarifying questions, how you answer Jace and Gideon) and play style feed the hidden
   Understanding / Leverage axes that will pick the ending.
 - Save and load (localStorage, manual slot + autosave), **export** a save to a `.json` file and **import** it again.
@@ -36,12 +53,12 @@ This repository holds **Act I: "Before the Wave"** (Epic: *Lumen 2.0*), about an
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # domain + application tests (Vitest), including full Act I playthroughs
+npm test           # domain + application tests (Vitest), including full Act I and Act II playthroughs
 VITE_BALANCE_REPORT=1 npx vitest run playthrough --silent=false   # print a balance report
 npm run build      # typecheck + production build into dist/
 ```
 
-Controls: `WASD`/arrows walk, `E`/`Space` interact, `1`-`5` choose options and actions, `R` retreat, `Q` Jira board, `C` character, `Esc` menu. Minigames are played with the mouse (code review also takes `1`-`4` for the comment type).
+Controls: `WASD`/arrows walk, `E`/`Space` interact, `1`-`5` choose options and actions, `R` retreat, `Q` Jira board, `C` character, `Esc` menu. Minigames are played with the mouse (code review also takes `1`-`4` for the comment type); the Typing Sprint is played on the keyboard.
 
 ## Architecture
 
@@ -56,9 +73,9 @@ src/
     evolve.ts        evolve(state, event) -> state                   (pure fold, no validation)
     queries.ts       read models for the UI: getHud, getBattle, getDialogue, getQuestLog, getWorld, ...
     hero/ quest/ combat/ dialogue/ world/   aggregates and value objects
-    minigames/       one bounded context per minigame (ciPipeline, coverage, codeReview), each a pure
+    minigames/       one bounded context per minigame (ciPipeline, coverage, codeReview, typing, packageAudit), each a pure
                      start/decide/evolve module behind a small registry; views.ts = their read models
-    content/         data: NPCs + dialogue trees, quests (Act I chain), enemies, encounters
+    content/         data: NPCs + dialogue trees, quests (Act I + II chains), enemies, encounters
     shared/rng.ts    seeded PRNG; the seed is part of the state, so fights are reproducible
   application/
     gameService.ts   command bus + event publisher (dispatch -> decide -> evolve -> publish)

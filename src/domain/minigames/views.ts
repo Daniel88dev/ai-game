@@ -4,6 +4,9 @@ import type { GameState } from '../state';
 import { CI_CAUSE_LABEL, CI_TOOLS, RUN_MINUTES, type CiCause, type CiTestStatus, type CiTool } from './ciPipeline';
 import { DIFF, ISSUE_INFO, isSuspicious, PR_TITLE, type CommentOutcome, type IssueType } from './codeReview';
 import { BRANCHES, CARDS, COVERAGE_FUNCTION, coveragePercent, mutationPercent } from './coverage';
+import { PACKAGES, REGISTRY_COST, SOURCE_COST, verdictOf, type PackageTruth, type PackageVerdict } from './packageAudit';
+import { typingAiCost, typingTextFor } from './typing';
+import { aiName } from '../wren';
 import { gradeAtLeast, isMinigameOver, MINIGAME_TITLES, minigameResult, type MinigameResult } from './minigame';
 
 /**
@@ -21,6 +24,8 @@ interface Common {
   focus: number;
   aiCost: number;
   canAffordAi: boolean;
+  /** PILOT in Act I, WREN once LUM-102 is merged. */
+  aiName: string;
 }
 
 export interface CiView extends Common {
@@ -74,7 +79,39 @@ export interface ReviewView extends Common {
   issueTypes: { id: IssueType; label: string; critical: boolean }[];
 }
 
-export type MinigameView = CiView | CoverageView | ReviewView;
+export interface TypingView extends Common {
+  kind: 'typing';
+  file: string;
+  lines: { text: string; typed: number; by: 'you' | 'ai' | null; hallucinated: boolean }[];
+  current: number;
+  secondsLeft: number;
+  secondsTotal: number;
+  typos: number;
+  keystrokes: number;
+}
+
+export interface AuditView extends Common {
+  kind: 'packageAudit';
+  checksLeft: number;
+  checksTotal: number;
+  registryCost: number;
+  sourceCost: number;
+  wrenUsed: boolean;
+  packages: {
+    id: string;
+    name: string;
+    version: string;
+    registry: string | null;
+    source: string | null;
+    typoHint: string | null;
+    verdict: PackageVerdict;
+    wren: { says: PackageVerdict; why: string } | null;
+    /** After submitting: what it really was. */
+    truth: PackageTruth | null;
+  }[];
+}
+
+export type MinigameView = CiView | CoverageView | ReviewView | TypingView | AuditView;
 
 export function getMinigame(state: GameState): MinigameView | null {
   const s = state.minigame;
@@ -94,6 +131,7 @@ export function getMinigame(state: GameState): MinigameView | null {
     focus: state.hero.focusPoints,
     aiCost,
     canAffordAi: state.hero.tokens >= aiCost,
+    aiName: aiName(state),
   };
 
   switch (s.kind) {
@@ -164,6 +202,46 @@ export function getMinigame(state: GameState): MinigameView | null {
           };
         }),
         issueTypes: (Object.keys(ISSUE_INFO) as IssueType[]).map((id) => ({ id, ...ISSUE_INFO[id] })),
+      };
+    case 'typing': {
+      const cost = typingAiCost(state.hero.attributes.orchestration);
+      return {
+        ...common,
+        aiCost: cost,
+        canAffordAi: state.hero.tokens >= cost,
+        kind: 'typing',
+        file: typingTextFor(s.questId).file,
+        lines: s.lines.map((l) => ({ ...l })),
+        current: s.current,
+        secondsLeft: s.secondsLeft,
+        secondsTotal: s.secondsTotal,
+        typos: s.typos,
+        keystrokes: s.keystrokes,
+      };
+    }
+    case 'packageAudit':
+      return {
+        ...common,
+        kind: 'packageAudit',
+        checksLeft: s.checksLeft,
+        checksTotal: s.checksTotal,
+        registryCost: REGISTRY_COST,
+        sourceCost: SOURCE_COST,
+        wrenUsed: s.wren !== null,
+        packages: PACKAGES.map((p) => {
+          const w = s.wren?.find((x) => x.id === p.id);
+          return {
+            id: p.id,
+            name: p.name,
+            version: p.version,
+            registry: s.registryChecked.includes(p.id) || over ? p.registry : null,
+            source: s.sourceRead.includes(p.id) || over ? p.source : null,
+            typoHint: s.spotsTyposquats && p.looksLike ? `One letter away from "${p.looksLike}"` : null,
+            verdict: verdictOf(s, p.id),
+            wren: w ? { says: w.says, why: w.why } : null,
+            truth: over ? p.truth : null,
+          };
+        }),
       };
   }
 }

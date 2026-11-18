@@ -3,6 +3,8 @@ import { createRng } from './shared/rng';
 import { ciPipeline, type CiMove, type CiSession, type CiTool } from './minigames/ciPipeline';
 import { coverage, coveragePercent, mutationPercent } from './minigames/coverage';
 import { codeReview } from './minigames/codeReview';
+import { typing, TYPING_TEXTS } from './minigames/typing';
+import { packageAudit, PACKAGES } from './minigames/packageAudit';
 import type { HeroSnapshot, MinigameModule } from './minigames/shared';
 import { getMinigame, newGame, type GameState } from './index';
 import { run, types } from './testing';
@@ -207,5 +209,84 @@ describe('minigames inside the game', () => {
     const s = run(atLena(), { type: 'Interact' }, { type: 'ChooseDialogueOption', optionId: 'start' }).state;
     expect(run.bind(null, s, { type: 'CloseMinigame' })).toThrow('still going');
     expect(run.bind(null, s, { type: 'PlayMinigame', move: { game: 'coverage', kind: 'submit' } })).toThrow('another minigame');
+  });
+});
+
+describe('Typing Sprint minigame', () => {
+  const start = (h = hero()) => typing.start('LUM-102', h, createRng(1));
+  const keys = (text: string) => [...text].map((char) => ({ kind: 'key', char }) as const);
+
+  it('Velocity and Focus buy seconds', () => {
+    expect(start().secondsTotal).toBe(40 + 4 + 2);
+    expect(start(hero({ velocity: 5, focus: 4 })).secondsTotal).toBe(40 + 20 + 4);
+  });
+
+  it('a correct key moves the caret, a typo does not, and finishing the file ends the sprint', () => {
+    const text = TYPING_TEXTS.wrenConfig!;
+    const first = play(typing, start(), [{ kind: 'key', char: 'x' }, { kind: 'key', char: 'm' }]);
+    expect(first.s.lines[0]!.typed).toBe(1);
+    expect(first.s.typos).toBe(1);
+
+    const done = play(typing, start(), text.lines.flatMap(keys));
+    expect(done.s.phase).toBe('done');
+    const r = typing.result(done.s);
+    expect(r.grade).toBe('S');
+  });
+
+  it('time runs out on ticks, and an unfinished file grades badly', () => {
+    const s = start();
+    const r = play(typing, s, Array.from({ length: s.secondsTotal }, () => ({ kind: 'tick' }) as const));
+    expect(r.s.phase).toBe('timeout');
+    expect(typing.result(r.s).grade).toBe('F');
+    expect(() => play(typing, r.s, [{ kind: 'tick' }])).toThrow('over');
+  });
+
+  it('AI autocomplete costs tokens and finishes a line, sometimes with something wrong', () => {
+    const outcomes = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => play(typing, start(), [{ kind: 'aiComplete' }], hero(), seed));
+    for (const o of outcomes) {
+      expect(o.s.current).toBe(1);
+      expect(o.events[0]!.cost?.tokens).toBeGreaterThan(0);
+    }
+    const wrong = outcomes.find((o) => o.s.lines[0]!.hallucinated);
+    expect(wrong?.s.lines[0]!.text).toBe(TYPING_TEXTS.wrenConfig!.wrong[0]);
+    expect(() => play(typing, start(), [{ kind: 'aiComplete' }], hero({}, 0))).toThrow('tokens');
+  });
+});
+
+describe('Package Audit minigame', () => {
+  const start = (h = hero()) => packageAudit.start('LUM-131', h, createRng(1));
+  const correct = PACKAGES.map((p) => ({ kind: 'setVerdict', packageId: p.id, verdict: p.truth === 'used' ? 'keep' : 'remove' }) as const);
+
+  it('checks spend the budget and reveal information', () => {
+    const r = play(packageAudit, start(), [
+      { kind: 'checkRegistry', packageId: 'lodash-utils-pro' },
+      { kind: 'readSource', packageId: 'expresss' },
+    ]);
+    expect(r.s.checksLeft).toBe(r.s.checksTotal - 3);
+    expect(() => play(packageAudit, r.s, [{ kind: 'checkRegistry', packageId: 'lodash-utils-pro' }])).toThrow('Already');
+  });
+
+  it('a clean audit gets an S, keeping everything ships malware', () => {
+    expect(packageAudit.result(play(packageAudit, start(), [...correct, { kind: 'submitAudit' }]).s).grade).toBe('S');
+    const lazy = packageAudit.result(play(packageAudit, start(), [{ kind: 'submitAudit' }]).s);
+    expect(lazy.grade).toBe('F');
+    expect(lazy.summary.join(' ')).toContain('install script ran');
+  });
+
+  it('removing a package the app uses breaks the build', () => {
+    const r = play(packageAudit, start(), [...correct, { kind: 'setVerdict', packageId: 'lumen-money', verdict: 'remove' }, { kind: 'submitAudit' }]);
+    expect(packageAudit.result(r.s).score).toBe(85);
+  });
+
+  it('WREN audits everything for tokens, and its advice is not always right', () => {
+    const runs = [1, 2, 3, 4, 5, 6].map((seed) => play(packageAudit, start(), [{ kind: 'askWren' }], hero(), seed).s);
+    for (const s of runs) expect(s.wren).toHaveLength(PACKAGES.length);
+    const wrongCalls = runs.flatMap((s) => s.wren!.filter((w) => w.says !== (PACKAGES.find((p) => p.id === w.id)!.truth === 'used' ? 'keep' : 'remove')));
+    expect(wrongCalls.length).toBeGreaterThan(0);
+  });
+
+  it('Rigor 4+ notices typosquats', () => {
+    expect(start().spotsTyposquats).toBe(false);
+    expect(start(hero({ rigor: 4 })).spotsTyposquats).toBe(true);
   });
 });

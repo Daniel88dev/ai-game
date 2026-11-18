@@ -4,6 +4,8 @@ import {
   dodgeChance,
   INVESTIGATE_FOCUS_COST,
   isHeavyNext,
+  armored,
+  regenerates,
   startBattle,
   TEST_DAMAGE_REDUCTION,
   WRITE_TEST_FOCUS_COST,
@@ -12,7 +14,7 @@ import {
 import type { Command } from './commands';
 import { ENCOUNTERS, type EncounterDefinition } from './content/encounters';
 import { ENEMIES } from './content/enemies';
-import { NPCS, type DialogueContext, type NpcDefinition } from './content/npcs';
+import { NPCS, presentNpcs, type DialogueContext, type NpcDefinition } from './content/npcs';
 import { QUESTS } from './content/quests';
 import type { DialogueEffect } from './dialogue/dialogue';
 import type { DomainEvent } from './events';
@@ -40,6 +42,7 @@ import { createRng, type Rng } from './shared/rng';
 import { samePosition, step, type Position } from './shared/geometry';
 import { modeOf, type GameState } from './state';
 import { isWalkableTile, tileAt } from './world/officeMap';
+import { aiClarity, hasWren, WREN_DAMAGE_BONUS } from './wren';
 
 type Emit = (e: DomainEvent) => void;
 
@@ -66,6 +69,7 @@ export function isQuestAvailable(state: GameState, questId: string): boolean {
   if (!quest) return false;
   const status = state.quests[questId]?.status;
   if (status !== undefined && status !== 'todo') return false;
+  if (quest.requiresFlag && !state.flags.includes(quest.requiresFlag)) return false;
   return quest.requires.every((r) => state.quests[r]?.status === 'done');
 }
 
@@ -84,8 +88,8 @@ export function activeEncounters(state: GameState): EncounterDefinition[] {
   );
 }
 
-export function npcAt(p: Position): NpcDefinition | undefined {
-  return Object.values(NPCS).find((n) => samePosition(n.position, p));
+export function npcAt(state: GameState, p: Position): NpcDefinition | undefined {
+  return presentNpcs(dialogueContext(state)).find((n) => samePosition(n.position, p));
 }
 
 export function encounterAt(state: GameState, p: Position): EncounterDefinition | undefined {
@@ -93,12 +97,12 @@ export function encounterAt(state: GameState, p: Position): EncounterDefinition 
 }
 
 export function isWalkable(state: GameState, p: Position): boolean {
-  return isWalkableTile(p) && !npcAt(p) && !encounterAt(state, p);
+  return isWalkableTile(p) && !npcAt(state, p) && !encounterAt(state, p);
 }
 
 export function heroSnapshot(state: GameState): HeroSnapshot {
   const { attributes, tokens, focusPoints } = state.hero;
-  return { attributes, tokens, focusPoints };
+  return { attributes, tokens, focusPoints, clarity: aiClarity(state) };
 }
 
 // ---------------------------------------------------------------- shared rule helpers
@@ -165,7 +169,8 @@ function heroActs(action: HeroAction, rec: Recorder, rng: Rng): Decision<DomainE
       let damage = 3 + a.logic * 2 + rng.int(0, 2);
       if (battle.rootCauseRevealed) damage = Math.floor(damage * 1.5);
       if (critical) damage = Math.floor(damage * 1.5);
-      rec.emit({ type: 'HeroDebugged', damage: missed ? 0 : damage, missed, critical });
+      const hit = armored(missed ? 0 : damage, battle, enemy);
+      rec.emit({ type: 'HeroDebugged', damage: hit.damage, missed, critical, ...(hit.absorbed ? { absorbed: hit.absorbed } : {}) });
       return null;
     }
     case 'investigate': {
@@ -189,19 +194,24 @@ function heroActs(action: HeroAction, rec: Recorder, rng: Rng): Decision<DomainE
     case 'writeTest': {
       if (battle.testWritten) return reject('You already wrote a test in this fight');
       if (hero.focusPoints < WRITE_TEST_FOCUS_COST) return reject('Not enough Focus');
-      rec.emit({ type: 'TestWritten', damage: 2 + a.rigor + rng.int(0, 1), focusSpent: WRITE_TEST_FOCUS_COST });
+      const hit = armored(2 + a.rigor + rng.int(0, 1), battle, enemy);
+      rec.emit({ type: 'TestWritten', damage: hit.damage, focusSpent: WRITE_TEST_FOCUS_COST, ...(hit.absorbed ? { absorbed: hit.absorbed } : {}) });
       rec.emit({ type: 'PathAffinityShifted', understanding: 1, leverage: 0 });
       return null;
     }
     case 'askAi': {
       const cost = aiTokenCost(a.orchestration);
       if (hero.tokens < cost) return reject('Not enough tokens');
-      const hallucinationChance = Math.max(0.05, 0.4 - a.promptCraft * 0.05) + (enemy.traits?.aiConfusion ?? 0);
+      const wren = hasWren(rec.state);
+      const by = wren ? 'WREN' : 'PILOT';
+      const hallucinationChance =
+        Math.max(0.05, 0.4 - a.promptCraft * 0.05 - aiClarity(rec.state)) + (enemy.traits?.aiConfusion ?? 0);
       if (rng.chance(hallucinationChance)) {
         const enemyHealed = Math.min(4, battle.enemyMaxHp - battle.enemyHp);
-        rec.emit({ type: 'AiHallucinated', enemyHealed, tokensSpent: cost });
+        rec.emit({ type: 'AiHallucinated', enemyHealed, tokensSpent: cost, by });
       } else {
-        rec.emit({ type: 'AiPatchApplied', damage: 5 + Math.round(a.promptCraft * 2.5) + rng.int(0, 2), tokensSpent: cost });
+        const hit = armored(5 + Math.round(a.promptCraft * 2.5) + (wren ? WREN_DAMAGE_BONUS : 0) + rng.int(0, 2), battle, enemy);
+        rec.emit({ type: 'AiPatchApplied', damage: hit.damage, tokensSpent: cost, by, ...(hit.absorbed ? { absorbed: hit.absorbed } : {}) });
       }
       rec.emit({ type: 'PathAffinityShifted', understanding: 0, leverage: 1 });
       return null;
@@ -236,6 +246,9 @@ function enemyActs(rec: Recorder, rng: Rng): void {
     if (battle.testWritten) damage = Math.floor(damage * (1 - TEST_DAMAGE_REDUCTION));
     rec.emit({ type: 'EnemyAttacked', damage: Math.max(1, damage), heavy, attackName });
   }
+
+  const regen = Math.min(regenerates(battle, enemy), battle.enemyMaxHp - rec.state.battle!.enemyHp);
+  if (regen > 0) rec.emit({ type: 'EnemyRegenerated', amount: regen });
 
   const growth = enemy.traits?.growth ?? 0;
   if (growth && !battle.rootCauseRevealed) rec.emit({ type: 'EnemyGrew', attackBonus: battle.attackBonus + growth });
@@ -281,7 +294,7 @@ function decideBattleAction(state: GameState, action: HeroAction): Decision<Doma
 
 // ---------------------------------------------------------------- minigames
 
-const AI_MOVES = new Set<MinigameMove['kind']>(['askPilot', 'generateTests', 'aiPreReview']);
+const AI_MOVES = new Set<MinigameMove['kind']>(['askPilot', 'generateTests', 'aiPreReview', 'aiComplete', 'askWren']);
 
 function decideMinigameMove(state: GameState, move: MinigameMove): Decision<DomainEvent> {
   const session = state.minigame;
@@ -338,7 +351,7 @@ export function decide(state: GameState, command: Command): Decision<DomainEvent
     case 'Interact': {
       if (mode !== 'explore') return reject(`Cannot interact during ${mode}`);
       const target = step(state.hero.position, state.hero.facing);
-      const npc = npcAt(target);
+      const npc = npcAt(state, target);
       if (npc) {
         const nodeId = npc.entry(dialogueContext(state));
         return accept({ type: 'DialogueStarted', npcId: npc.id, nodeId });

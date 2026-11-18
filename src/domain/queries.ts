@@ -10,7 +10,7 @@ import {
 } from './combat/battle';
 import { ENCOUNTERS } from './content/encounters';
 import { ENEMIES } from './content/enemies';
-import { NPCS } from './content/npcs';
+import { NPCS, presentNpcs } from './content/npcs';
 import { QUEST_ORDER, QUESTS } from './content/quests';
 import { activeEncounters, dialogueContext, encounterAt, isQuestAvailable, npcAt } from './decide';
 import {
@@ -25,7 +25,8 @@ import {
   type AttributeGroup,
 } from './hero/hero';
 import type { Grade } from './minigames/minigame';
-import { ACTS, STATUS_LABEL, type QuestStatus } from './quest/quest';
+import { ACT_NUMBERS, ACTS, STATUS_LABEL, type QuestStatus } from './quest/quest';
+import { aiName } from './wren';
 import { step } from './shared/geometry';
 import { modeOf, type GameState, type Mode } from './state';
 import { tileAt } from './world/officeMap';
@@ -144,11 +145,38 @@ export interface ActProgressView {
   complete: boolean;
 }
 
-export function getActProgress(state: GameState, act = 1): ActProgressView {
+function actProgress(state: GameState, act: number): ActProgressView {
   const ids = QUEST_ORDER.filter((id) => QUESTS[id]!.act === act);
   const done = ids.filter((id) => state.quests[id]?.status === 'done').length;
   const info = ACTS[act]!;
-  return { act, title: info.title, epic: info.epic, done, total: ids.length, complete: done === ids.length };
+  // The act is over when its epic closes (the ticket that completes it is merged); side tickets are optional.
+  const finale = ids.find((id) => QUESTS[id]!.completesAct?.act === act);
+  const complete = finale ? state.quests[finale]?.status === 'done' : done === ids.length;
+  return { act, title: info.title, epic: info.epic, done, total: ids.length, complete };
+}
+
+/** The act you are playing: the first one whose tickets or closing all-hands are not done yet. */
+export function currentAct(state: GameState): number {
+  return (
+    ACT_NUMBERS.find((n) => !actProgress(state, n).complete || !state.flags.includes(ACTS[n]!.finaleFlag)) ??
+    ACT_NUMBERS[ACT_NUMBERS.length - 1]!
+  );
+}
+
+/** Progress of one act's epic; defaults to the current act. */
+export function getActProgress(state: GameState, act = currentAct(state)): ActProgressView {
+  return actProgress(state, act);
+}
+
+export interface ActSummaryView extends ActProgressView {
+  next: string;
+}
+
+/** The end-of-act screen: the most recent act whose all-hands you heard. */
+export function getActSummary(state: GameState): ActSummaryView | null {
+  const finished = ACT_NUMBERS.filter((n) => state.flags.includes(ACTS[n]!.finaleFlag));
+  const act = finished[finished.length - 1];
+  return act === undefined ? null : { ...actProgress(state, act), next: ACTS[act]!.next };
 }
 
 export interface DialogueView {
@@ -213,7 +241,18 @@ export function getBattle(state: GameState): BattleView | null {
   if (enemy.traits?.growth) traits.push(b.rootCauseRevealed ? 'Leak plugged: it stopped growing' : `Grows every turn (+${b.attackBonus} attack)`);
   if (enemy.traits?.revives) traits.push(b.revived ? 'Came back once already' : b.testWritten ? 'A test keeps it from coming back' : 'Comes back unless a test exists');
   if (needed > 1 && !b.rootCauseRevealed) traits.push(`Clues ${b.clues}/${needed}`);
-  if (enemy.traits?.aiConfusion) traits.push('Confuses PILOT');
+  const ai = aiName(state);
+  if (enemy.traits?.armor) traits.push(b.rootCauseRevealed ? 'Claims checked: armor is gone' : `Armored: shrugs off ${Math.round(enemy.traits.armor * 100)}% of every hit`);
+  if (enemy.traits?.regen) {
+    const stopsOnTest = enemy.traits.regenStopsOn !== 'rootCause';
+    const stopped = stopsOnTest ? b.testWritten : b.rootCauseRevealed;
+    traits.push(
+      stopped
+        ? 'Stopped coming back'
+        : `Regrows ${enemy.traits.regen} HP a turn until ${stopsOnTest ? 'a test exists' : 'you find its source'}`,
+    );
+  }
+  if (enemy.traits?.aiConfusion) traits.push(`Confuses ${ai}`);
 
   const actions: BattleActionView[] = [
     { id: 'debug', ...ACTION_INFO.debug, enabled: turn },
@@ -233,7 +272,8 @@ export function getBattle(state: GameState): BattleView | null {
     {
       id: 'askAi',
       ...ACTION_INFO.askAi,
-      hint: `Costs ${aiCost} tokens. Strong AI patch, but may hallucinate.`,
+      label: `Ask ${ai}`,
+      hint: `Costs ${aiCost} tokens. ${ai === 'WREN' ? 'An agent patch, stronger than PILOT' : 'Strong AI patch'}, but may hallucinate.`,
       enabled: turn && hero.tokens >= aiCost,
       reason: hero.tokens < aiCost ? 'Not enough tokens' : undefined,
     },
@@ -267,7 +307,7 @@ export function getBattle(state: GameState): BattleView | null {
 export function getInteractionHint(state: GameState): string | null {
   if (modeOf(state) !== 'explore') return null;
   const target = step(state.hero.position, state.hero.facing);
-  const npc = npcAt(target);
+  const npc = npcAt(state, target);
   if (npc) return `Talk to ${npc.name.split(' ')[0]}`;
   const enc = encounterAt(state, target);
   if (enc) return `Fight ${ENEMIES[enc.enemyId]!.name}`;
@@ -291,8 +331,9 @@ function hasSomethingForYou(state: GameState, npcId: string): boolean {
   });
   if (ticketWaiting) return true;
   // The end-of-act all-hands.
-  const ctx = dialogueContext(state);
-  return npcId === 'gideon' && ctx.questStatus('LUM-33') === 'done' && !ctx.hasFlag('heard-all-hands');
+  if (npcId !== 'gideon') return false;
+  const act = currentAct(state);
+  return actProgress(state, act).complete && !state.flags.includes(ACTS[act]!.finaleFlag);
 }
 
 /** Everything Phaser needs to place sprites on the office map. */
@@ -306,7 +347,7 @@ export function getWorld(state: GameState): WorldView {
   const { hero } = state;
   return {
     hero: { x: hero.position.x, y: hero.position.y, facing: hero.facing },
-    npcs: Object.values(NPCS).map((n) => ({
+    npcs: presentNpcs(dialogueContext(state)).map((n) => ({
       id: n.id,
       sprite: n.sprite,
       x: n.position.x,

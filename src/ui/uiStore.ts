@@ -1,4 +1,6 @@
-import type { DomainEvent } from '../domain';
+import { ACTS, type DomainEvent } from '../domain';
+
+const FINALE_FLAGS = new Set(Object.values(ACTS).map((a) => a.finaleFlag));
 
 export type Panel = 'none' | 'menu' | 'questBoard' | 'character' | 'help' | 'actComplete';
 
@@ -71,6 +73,7 @@ export class UiStore {
           break;
         case 'QuestCompleted':
           this.toast(`${e.questId} merged! +${e.xp} XP, +${e.tokens} tokens`, 'good');
+          if (e.questId === 'LUM-102') this.toast('WREN is online. "Ask PILOT" is now "Ask WREN".', 'good');
           break;
         case 'LeveledUp':
           this.toast(`Level up! Level ${e.level}. +${e.attributePoints} attribute points`, 'good');
@@ -89,7 +92,7 @@ export class UiStore {
           break;
         case 'StoryFlagSet':
           // The end-of-act summary opens when the all-hands conversation ends.
-          if (e.flag === 'heard-all-hands') this.pendingActComplete = true;
+          if (FINALE_FLAGS.has(e.flag)) this.pendingActComplete = true;
           break;
         case 'DialogueEnded':
           if (this.pendingActComplete && e.npcId === 'gideon') {

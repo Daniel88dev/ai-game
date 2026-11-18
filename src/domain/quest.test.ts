@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getQuestLog, getWorld, newGame, type GameState } from './index';
+import { dialogueContext, getActProgress, getQuestLog, getWorld, isQuestAvailable, newGame, NPCS, QUESTS, type GameState } from './index';
 import { run, types } from './testing';
 
 const facingPriya = (): GameState => {
@@ -90,5 +90,22 @@ describe('Act I ticket chain', () => {
     expect(types(events)).toEqual(['DialogueStarted', 'StoryFlagSet', 'PathAffinityShifted', 'TokensGifted', 'DialogueAdvanced']);
     expect(state.hero.tokens).toBe(s0.hero.tokens + 10);
     expect(state.flags).toEqual(['jace-prompting']);
+  });
+});
+
+describe('Act II', () => {
+  it('opens only after the Act I all-hands, with Gideon handing out LUM-102', () => {
+    const done = Object.fromEntries(
+      Object.values(QUESTS)
+        .filter((q) => q.act === 1)
+        .map((q) => [q.id, { status: 'done' as const, clarified: false }]),
+    );
+    const before: GameState = { ...newGame(), quests: done };
+    expect(isQuestAvailable(before, 'LUM-102')).toBe(false);
+    expect(getActProgress(before).act).toBe(1);
+    const after: GameState = { ...before, flags: ['heard-all-hands'] };
+    expect(isQuestAvailable(after, 'LUM-102')).toBe(true);
+    expect(getActProgress(after).act).toBe(2);
+    expect(NPCS.gideon!.entry(dialogueContext(after))).toBe('LUM-102:offer');
   });
 });

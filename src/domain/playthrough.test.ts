@@ -9,6 +9,7 @@ import {
   getBattle,
   getDialogue,
   getMinigame,
+  getWorld,
   isQuestAvailable,
   NPCS,
   QUEST_ORDER,
@@ -22,13 +23,14 @@ import {
   type MinigameMove,
 } from './index';
 import { BRANCHES, CARDS } from './minigames/coverage';
+import { PACKAGES } from './minigames/packageAudit';
 import { DIFF } from './minigames/codeReview';
 import type { CiTool } from './minigames/ciPipeline';
 import { run, walkTo } from './testing';
 import { maxHp as maxHpOf } from './hero/hero';
 
 /**
- * Bots that play the whole of Act I through commands only, the same way the UI does.
+ * Bots that play Acts I and II through commands only, the same way the UI does.
  * They prove the content is reachable and finishable, and keep an eye on balance:
  * the no-AI path must be about as viable as the AI path.
  */
@@ -133,7 +135,9 @@ class Bot {
     const lowHp = hero.hp <= Math.max(8, view.enemy.hp > 10 ? 12 : 6);
     if (lowHp && can('coffee')) return 'coffee';
     if (this.style === 'ai') {
-      // An AI-leaning engineer still writes one test, then lets PILOT do the heavy lifting.
+      // An AI-leaning engineer still reads the warning chips: some bugs only stop regrowing once you know their source.
+      if (view.traits.some((t) => t.includes('find its source')) && can('investigate')) return 'investigate';
+      // Then writes one test, and lets the AI do the heavy lifting.
       if (can('writeTest') && view.enemy.hp > 20) return 'writeTest';
       if (can('askAi')) return 'askAi';
       if (can('investigate')) return 'investigate';
@@ -155,7 +159,7 @@ class Bot {
       this.talk(quest.giverNpcId, ['start']);
       expect(this.state.minigame).not.toBeNull();
       let guard = 0;
-      while (!getMinigame(this.state)!.over && guard++ < 60) this.do({ type: 'PlayMinigame', move: this.minigameMove() });
+      while (!getMinigame(this.state)!.over && guard++ < 400) this.do({ type: 'PlayMinigame', move: this.minigameMove() });
       (this.stats.grades[questId] ??= []).push(getMinigame(this.state)!.result!.grade);
       this.do({ type: 'CloseMinigame' });
       this.spendPoints();
@@ -200,31 +204,65 @@ class Bot {
         }
         return { game: 'codeReview', kind: 'verdict', verdict: 'requestChanges' };
       }
+      case 'typing': {
+        // A tick now and then, so the clock matters a little: the bot types about 4 keys a second.
+        if (v.keystrokes % 4 === 3 && v.secondsLeft > 1) return { game: 'typing', kind: 'tick' };
+        if (ai) return { game: 'typing', kind: 'aiComplete' };
+        const line = v.lines[v.current]!;
+        return { game: 'typing', kind: 'key', char: line.text[line.typed]! };
+      }
+      case 'packageAudit': {
+        if (ai && !v.wrenUsed) return { game: 'packageAudit', kind: 'askWren' };
+        const truth = (id: string) => PACKAGES.find((p) => p.id === id)!.truth;
+        if (this.style === 'craft') {
+          // A careful reader checks the unfamiliar names first.
+          const unchecked = v.packages.find((p) => p.registry === null && (truth(p.id) !== 'used' || p.name.startsWith('@')));
+          if (unchecked && v.checksLeft >= v.registryCost) return { game: 'packageAudit', kind: 'checkRegistry', packageId: unchecked.id };
+        }
+        for (const p of v.packages) {
+          const want = p.wren && this.style === 'ai' ? p.wren.says : p.registry !== null ? (truth(p.id) === 'used' ? 'keep' : 'remove') : 'keep';
+          if (p.verdict !== want) return { game: 'packageAudit', kind: 'setVerdict', packageId: p.id, verdict: want };
+        }
+        return { game: 'packageAudit', kind: 'submitAudit' };
+      }
     }
   }
 
-  /** Play the act: take every ticket as it becomes available, finish it, get it merged. */
-  playActOne() {
-    for (let guard = 0; guard < 30 && !getActProgress(this.state).complete; guard++) {
-      const id = QUEST_ORDER.find((q) => isQuestAvailable(this.state, q));
+  /** Story choices this bot makes when an NPC asks. */
+  private get choices(): string[] {
+    return this.style === 'ai' ? ['skeptical', 'take'] : ['encourage', 'decline'];
+  }
+
+  /** Play an act: take every ticket as it becomes available, finish it, get it merged. */
+  playAct(act: number) {
+    for (let guard = 0; guard < 30 && !getActProgress(this.state, act).complete; guard++) {
+      const id = QUEST_ORDER.find((q) => QUESTS[q]!.act === act && isQuestAvailable(this.state, q));
       if (!id) throw new Error(`Stuck: nothing available. ${JSON.stringify(this.state.quests)}`);
       const quest = QUESTS[id]!;
-      this.talk(quest.giverNpcId, ['ask', 'accept', 'ok']);
+      // Someone may want a word first (Marta's rooftop talk), so ask up to twice.
+      for (let i = 0; i < 2 && this.state.quests[id]?.status !== 'inProgress'; i++) this.talk(quest.giverNpcId, ['ask', 'accept', 'ok', ...this.choices]);
       expect(this.state.quests[id]?.status).toBe('inProgress');
       if (quest.objective.kind === 'defeat') this.fight(quest.objective.encounterId);
       else this.minigame(id);
       this.talk(quest.giverNpcId, ['merge', 'ok']);
       expect(this.state.quests[id]?.status).toBe('done');
       this.spendPoints();
+      // Between tickets, hear people out (Jace's "just prompt it", Marta on the roof).
+      if (act === 2) for (const npc of ['jace', 'marta']) this.talk(npc, [...this.choices, 'ok']);
     }
-    this.talk('gideon', [this.style === 'ai' ? 'excited' : 'careful', 'ok']);
+    const finale = act === 1 ? (this.style === 'ai' ? 'excited' : 'careful') : this.style === 'ai' ? 'numbers' : 'who';
+    this.talk('gideon', [finale, 'ok']);
+  }
+
+  playActOne() {
+    this.playAct(1);
   }
 }
 
-function playMany(style: Style, seeds: number) {
+function playMany(style: Style, seeds: number, acts = 1) {
   const bots = Array.from({ length: seeds }, (_, i) => {
     const bot = new Bot(style, 1000 + i * 7919);
-    bot.playActOne();
+    for (let act = 1; act <= acts; act++) bot.playAct(act);
     return bot;
   });
   const fights: Record<string, { won: number; lost: number }> = {};
@@ -241,7 +279,7 @@ describe('Act I playthrough', () => {
   it.each<Style>(['craft', 'ai'])('a %s-focused player can finish Act I', (style) => {
     const { bots, fights } = playMany(style, 12);
     for (const bot of bots) {
-      expect(getActProgress(bot.state).complete).toBe(true);
+      expect(getActProgress(bot.state, 1).complete).toBe(true);
       expect(bot.state.flags).toContain('heard-all-hands');
     }
     const winRate = (id: string) => fights[id]!.won / (fights[id]!.won + fights[id]!.lost);
@@ -265,11 +303,35 @@ describe('Act I playthrough', () => {
   // VITE_BALANCE_REPORT=1 npx vitest run playthrough --silent=false
   it.skipIf(!import.meta.env.VITE_BALANCE_REPORT)('prints a balance report', () => {
     for (const style of ['craft', 'ai'] as const) {
-      const { bots, fights } = playMany(style, 12);
+      const { bots, fights } = playMany(style, 12, 2);
       const grades = bots.flatMap((b) => Object.entries(b.stats.grades).map(([q, g]) => `${q}:${g.join('')}`));
       const levels = bots.map((b) => b.state.hero.level);
       console.log(bots[0]!.stats.detail!.join(' | '), bots[1]!.stats.detail!.join(' | '));
       console.log(style, JSON.stringify(fights), 'levels', levels.join(','), 'tokens', bots.map((b) => b.state.hero.tokens).join(','), '\n', grades.sort().join(' '), aiTokenCost(1));
     }
+  });
+});
+
+describe('Act II playthrough', () => {
+  it.each<Style>(['craft', 'ai'])('a %s-focused player can finish Act II', (style) => {
+    const { bots, fights } = playMany(style, 8, 2);
+    for (const bot of bots) {
+      expect(getActProgress(bot.state, 2).complete).toBe(true);
+      expect(bot.state.flags).toContain('heard-layoffs');
+      expect(bot.state.flags.some((f) => f.startsWith('rooftop-'))).toBe(true);
+    }
+    const winRate = (id: string) => fights[id]!.won / (fights[id]!.won + fights[id]!.lost);
+    for (const id of ['hallucinationMimic', 'confidentGolem', 'copyPasteSwarm', 'phantomPackage']) {
+      expect(winRate(id), `${style} vs ${id}`).toBeGreaterThanOrEqual(0.6);
+    }
+    expect(Math.min(...bots.map((b) => b.state.hero.level))).toBeGreaterThanOrEqual(8);
+  });
+
+  it('Tomás leaves the office after the Act II all-hands', () => {
+    const bot = new Bot('craft', 11);
+    bot.playAct(1);
+    bot.playAct(2);
+    expect(getWorld(bot.state).npcs.map((n) => n.id)).not.toContain('tomas');
+    expect(getActProgress(bot.state).act).toBe(2);
   });
 });

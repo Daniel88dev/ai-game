@@ -3,7 +3,9 @@ import type { Decision } from '../shared/result';
 import { ciPipeline, type CiEvent, type CiMove, type CiSession } from './ciPipeline';
 import { codeReview, type ReviewEvent, type ReviewMove, type ReviewSession } from './codeReview';
 import { coverage, type CoverageEvent, type CoverageMove, type CoverageSession } from './coverage';
+import { packageAudit, type AuditEvent, type AuditMove, type AuditSession } from './packageAudit';
 import type { HeroSnapshot, MinigameModule, MinigameResult } from './shared';
+import { typing, type TypingEvent, type TypingMove, type TypingSession } from './typing';
 
 export type { Grade, HeroSnapshot, MinigameResult, Cost } from './shared';
 export { GRADE_RANK, gradeAtLeast, gradeFor } from './shared';
@@ -12,24 +14,28 @@ export { GRADE_RANK, gradeAtLeast, gradeFor } from './shared';
  * Registry of minigame bounded contexts. The core decider talks to a minigame
  * only through these functions, so adding one means: write the module, add it here.
  */
-export type MinigameId = 'ciPipeline' | 'coverage' | 'codeReview';
-export type MinigameSession = CiSession | CoverageSession | ReviewSession;
-export type MinigameEvent = CiEvent | CoverageEvent | ReviewEvent;
+export type MinigameId = 'ciPipeline' | 'coverage' | 'codeReview' | 'typing' | 'packageAudit';
+export type MinigameSession = CiSession | CoverageSession | ReviewSession | TypingSession | AuditSession;
+export type MinigameEvent = CiEvent | CoverageEvent | ReviewEvent | TypingEvent | AuditEvent;
 
 export type MinigameMove =
   | ({ readonly game: 'ciPipeline' } & CiMove)
   | ({ readonly game: 'coverage' } & CoverageMove)
-  | ({ readonly game: 'codeReview' } & ReviewMove);
+  | ({ readonly game: 'codeReview' } & ReviewMove)
+  | ({ readonly game: 'typing' } & TypingMove)
+  | ({ readonly game: 'packageAudit' } & AuditMove);
 
 // The registry erases the per-game types; the functions below restore them by `kind`.
 type AnyModule = MinigameModule<any, any, any>;
 
-const MODULES: Record<MinigameId, AnyModule> = { ciPipeline, coverage, codeReview };
+const MODULES: Record<MinigameId, AnyModule> = { ciPipeline, coverage, codeReview, typing, packageAudit };
 
 export const MINIGAME_TITLES: Record<MinigameId, string> = {
   ciPipeline: ciPipeline.title,
   coverage: coverage.title,
   codeReview: codeReview.title,
+  typing: typing.title,
+  packageAudit: packageAudit.title,
 };
 
 export function startMinigame(id: MinigameId, questId: string, hero: HeroSnapshot, rng: Rng): MinigameSession {
