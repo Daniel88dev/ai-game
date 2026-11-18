@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState, type ReactNode } from 'react';
-import { getActProgress, getCharacter, getQuestLog, modeOf, type QuestStatus } from '../../domain';
+import { getActProgress, getActSummary, getCharacter, getQuestLog, modeOf, type QuestStatus } from '../../domain';
 import { canSave, SaveError, type SaveSummary } from '../../application/saveGame';
 import { downloadTextFile, readTextFile } from '../../infrastructure/fileTransfer';
 import type { Runtime } from '../../runtime';
@@ -246,8 +246,9 @@ export function HelpPanel({ rt }: { rt: Runtime }) {
         <li>People with a <b>!</b> have something for you. Take a ticket, do the work, then come back so they can merge it.</li>
         <li>Bugs with a shell dodge blind fixes. <b>Read the stack trace</b> first, then <b>Debug</b>.</li>
         <li><b>Write test</b> softens the bug's hits and stops a regression from coming back.</li>
-        <li><b>Ask PILOT</b> hits hard but costs tokens and sometimes hallucinates.</li>
-        <li>Lena and Marta run minigames: a flaky CI release, a coverage crawl and a code review.</li>
+        <li><b>Ask PILOT</b> hits hard but costs tokens and sometimes hallucinates. In Act II PILOT becomes <b>WREN</b>, a real agent.</li>
+        <li>Some tickets are minigames: a flaky CI release, a coverage crawl, a code review, a typing sprint (type the code on your keyboard) and a package audit.</li>
+        <li>Act II bugs play differently: some are armored until you check their claims, some regrow until you write a test or find their source.</li>
         <li>The <b>coffee machine</b> by the window heals you, tops up your token budget and autosaves.</li>
       </ul>
     </Modal>
@@ -256,14 +257,15 @@ export function HelpPanel({ rt }: { rt: Runtime }) {
 
 export function ActCompletePanel({ rt }: { rt: Runtime }) {
   const state = useGameState(rt);
-  const act = getActProgress(state);
+  const act = getActSummary(state) ?? { ...getActProgress(state), next: '' };
   const { leaning } = getCharacter(state);
+  const ai = act.act >= 2 ? 'WREN' : 'PILOT';
   const style =
     leaning < -0.33
       ? 'You fixed things by understanding them. Marta noticed.'
       : leaning > 0.33
-        ? 'You shipped fast with PILOT at your side. Jace noticed.'
-        : 'You mixed reading code and leaning on PILOT. Everybody noticed something different.';
+        ? `You shipped fast with ${ai} at your side. Jace noticed.`
+        : `You mixed reading code and leaning on ${ai}. Everybody noticed something different.`;
   return (
     <Modal title="Epic closed" onClose={() => rt.ui.close()}>
       <div className="act-complete">
@@ -272,7 +274,7 @@ export function ActCompletePanel({ rt }: { rt: Runtime }) {
           {state.hero.name}, level {state.hero.level}. {act.done} tickets merged in the {act.epic} epic.
         </p>
         <p className="muted">{style}</p>
-        <p>Next: Act II, "The Wave". WREN arrives. Coming in a future update.</p>
+        {act.next && <p>Next: {act.next}</p>}
         <button className="btn" onClick={() => rt.ui.close()}>
           Keep exploring
         </button>

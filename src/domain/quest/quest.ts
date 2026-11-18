@@ -23,6 +23,8 @@ export interface QuestDefinition {
   readonly giverNpcId: string;
   /** Tickets that must be Done before this one shows up on the board. */
   readonly requires: readonly string[];
+  /** A story beat that has to happen first (e.g. the all-hands that opens an act). */
+  readonly requiresFlag?: string;
   readonly description: string;
   readonly acceptanceCriteria: readonly AcceptanceCriterion[];
   readonly objective: QuestObjective;
@@ -52,6 +54,27 @@ export const STATUS_LABEL: Record<QuestStatus, string> = {
   done: 'Done',
 };
 
-export const ACTS: Record<number, { title: string; epic: string }> = {
-  1: { title: 'Act I: Before the Wave', epic: 'Lumen 2.0' },
+export interface ActDefinition {
+  readonly title: string;
+  readonly epic: string;
+  /** Set when the end-of-act all-hands is over. Until then the act is still "current". */
+  readonly finaleFlag: string;
+  /** Shown on the end-of-act screen. */
+  readonly next: string;
+}
+
+export const ACTS: Record<number, ActDefinition> = {
+  1: {
+    title: 'Act I: Before the Wave',
+    epic: 'Lumen 2.0',
+    finaleFlag: 'heard-all-hands',
+    next: 'Act II, "The Wave", starts now. Gideon has a ticket for you: LUM-102, set up WREN.',
+  },
+  2: {
+    title: 'Act II: The Wave',
+    epic: 'AI-First Transformation',
+    finaleFlag: 'heard-layoffs',
+    next: 'Act III, "Agents Everywhere", is coming in a future update.',
+  },
 };
+export const ACT_NUMBERS: readonly number[] = Object.keys(ACTS).map(Number);

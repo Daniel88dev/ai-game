@@ -31,7 +31,8 @@ export type CoreEvent =
   | { type: 'QuestCompleted'; questId: string; xp: number; tokens: number }
   // Combat
   | { type: 'BattleStarted'; battle: Battle }
-  | { type: 'HeroDebugged'; damage: number; missed: boolean; critical: boolean }
+  /** `absorbed`: damage soaked up by an armored bug (Confident Golem) before its root cause is known. */
+  | { type: 'HeroDebugged'; damage: number; missed: boolean; critical: boolean; absorbed?: number }
   | {
       type: 'StackTraceRead';
       success: boolean;
@@ -41,14 +42,16 @@ export type CoreEvent =
       /** Set when this read revealed the root cause. */
       rootCause: string | null;
     }
-  | { type: 'TestWritten'; damage: number; focusSpent: number }
-  | { type: 'AiPatchApplied'; damage: number; tokensSpent: number }
-  | { type: 'AiHallucinated'; enemyHealed: number; tokensSpent: number }
+  | { type: 'TestWritten'; damage: number; focusSpent: number; absorbed?: number }
+  | { type: 'AiPatchApplied'; damage: number; tokensSpent: number; by?: 'PILOT' | 'WREN'; absorbed?: number }
+  | { type: 'AiHallucinated'; enemyHealed: number; tokensSpent: number; by?: 'PILOT' | 'WREN' }
   | { type: 'CoffeeDrunk'; focusRestored: number; hpRestored: number }
   | { type: 'EnemyAttacked'; damage: number; attackName: string; heavy: boolean }
   | { type: 'AttackDodged'; attackName: string; heavy: boolean }
   | { type: 'EnemyGrew'; attackBonus: number }
   | { type: 'EnemyRevived'; hp: number }
+  /** Copy-Paste Swarm / Phantom Package: new copies replace the ones you fixed. */
+  | { type: 'EnemyRegenerated'; amount: number }
   | { type: 'HeavyAttackTelegraphed'; attackName: string }
   | { type: 'BattleWon'; encounterId: string; xp: number }
   | { type: 'BattleLost'; encounterId: string }

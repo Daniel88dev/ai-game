@@ -10,6 +10,11 @@ import {
   type MinigameMove,
   type MinigameView,
   type ReviewView,
+  type TypingView,
+  type AuditView,
+  type TypingMove,
+  type AuditMove,
+  type PackageVerdict,
 } from '../../domain';
 import type { Runtime } from '../../runtime';
 import { useGameState } from '../hooks';
@@ -58,6 +63,8 @@ export function MinigamePanel({ rt }: { rt: Runtime }) {
         {view.kind === 'ciPipeline' && <CiGame view={view} play={play} />}
         {view.kind === 'coverage' && <CoverageGame view={view} play={play} />}
         {view.kind === 'codeReview' && <ReviewGame view={view} play={play} />}
+        {view.kind === 'typing' && <TypingGame view={view} play={play} rt={rt} />}
+        {view.kind === 'packageAudit' && <AuditGame view={view} play={play} />}
       </div>
       {view.result && <ResultBar view={view} onClose={close} />}
     </div>
@@ -138,7 +145,7 @@ function CiGame({ view, play }: { view: CiView; play: (m: MinigameMove) => void 
         <button className="btn btn-run" disabled={locked} onClick={() => ci({ kind: 'run' })}>
           Run pipeline ({view.runCost} min)
         </button>
-        {view.slowdown > 0 && <Hint>PILOT's sleep(5) calls make each run {view.slowdown} min slower.</Hint>}
+        {view.slowdown > 0 && <Hint>{view.aiName}'s sleep(5) calls make each run {view.slowdown} min slower.</Hint>}
         {!test ? (
           <Hint>Run the pipeline, then pick a red test. Diagnose it (1 min, 1 Focus) and apply the fix that matches the cause. Re-running until green wastes the clock.</Hint>
         ) : test.handled ? (
@@ -171,7 +178,7 @@ function CiGame({ view, play }: { view: CiView; play: (m: MinigameMove) => void 
                 disabled={locked || !view.canAffordAi}
                 onClick={() => ci({ kind: 'askPilot', testId: test.id })}
               >
-                Ask PILOT ({view.aiCost} tokens)
+                Ask {view.aiName} ({view.aiCost} tokens)
               </button>
             </div>
           </div>
@@ -235,7 +242,7 @@ function CoverageGame({ view, play }: { view: CoverageView; play: (m: MinigameMo
             disabled={locked || view.generatedUsed || !view.canAffordAi}
             onClick={() => cov({ kind: 'generateTests' })}
           >
-            PILOT: generate tests ({view.aiCost} tokens)
+            {view.aiName}: generate tests ({view.aiCost} tokens)
           </button>
           <button className="btn btn-small" disabled={locked} onClick={() => cov({ kind: 'submit' })}>
             Submit
@@ -284,7 +291,7 @@ function ReviewGame({ view, play }: { view: ReviewView; play: (m: MinigameMove) 
             <span className="diff-n">{l.n}</span>
             <code>+ {l.code}</code>
             <span className="diff-notes">
-              {l.ai && <span className="chip chip-ai">PILOT: {label(l.ai)}?</span>}
+              {l.ai && <span className="chip chip-ai">{view.aiName}: {label(l.ai)}?</span>}
               {l.comment && (
                 <span className={`chip chip-comment ${l.comment.outcome ? `outcome-${l.comment.outcome}` : ''}`}>you: {label(l.comment.type)}</span>
               )}
@@ -319,7 +326,7 @@ function ReviewGame({ view, play }: { view: ReviewView; play: (m: MinigameMove) 
           </Hint>
         )}
         <button className="btn btn-small action-askAi" disabled={locked || view.aiUsed || !view.canAffordAi} onClick={() => rv({ kind: 'aiPreReview' })}>
-          PILOT pre-review ({view.aiCost} tokens)
+          {view.aiName} pre-review ({view.aiCost} tokens)
         </button>
         <div className="ci-tools">
           <button className="btn btn-small" disabled={locked} onClick={() => rv({ kind: 'verdict', verdict: 'requestChanges' })}>
@@ -329,6 +336,181 @@ function ReviewGame({ view, play }: { view: ReviewView; play: (m: MinigameMove) 
             Approve
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ Typing Sprint
+
+function TypingGame({ view, play, rt }: { view: TypingView; play: (m: MinigameMove) => void; rt: Runtime }) {
+  const locked = view.over;
+  const [flash, setFlash] = useState(false);
+
+  // The clock lives in the UI; the domain only counts `tick` moves, so it stays pure and replayable.
+  useEffect(() => {
+    if (locked) return;
+    const id = window.setInterval(() => {
+      if (rt.ui.inputBlocked()) return; // paused while a menu is open
+      rt.game.dispatch({ type: 'PlayMinigame', move: { game: 'typing', kind: 'tick' } });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [rt, locked]);
+
+  useEffect(() => {
+    if (locked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1 || rt.ui.inputBlocked()) return;
+      e.preventDefault();
+      const r = rt.game.dispatch({ type: 'PlayMinigame', move: { game: 'typing', kind: 'key', char: e.key } });
+      const typo = r.ok && r.events.some((ev) => ev.type === 'TypingKeyHit' && !ev.correct);
+      if (typo) {
+        setFlash(true);
+        window.setTimeout(() => setFlash(false), 120);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [rt, locked]);
+
+  const ty = (m: TypingMove) => play({ game: 'typing', ...m });
+  const accuracy = view.keystrokes === 0 ? 100 : Math.round(((view.keystrokes - view.typos) / view.keystrokes) * 100);
+
+  return (
+    <div className="typing">
+      <div className="typing-editor">
+        <div className="typing-file small">{view.file}</div>
+        {view.lines.map((l, i) => {
+          const active = i === view.current && !locked;
+          return (
+            <div key={i} className={`typing-line ${active ? 'active' : ''} ${i > view.current ? 'later' : ''} ${active && flash ? 'typo' : ''}`}>
+              <span className="diff-n">{i + 1}</span>
+              <code>
+                {l.by === 'ai' ? (
+                  <span className={l.hallucinated ? 'typed-bad' : 'typed-ai'}>{l.text}</span>
+                ) : (
+                  <>
+                    <span className="typed-ok">{l.text.slice(0, l.typed)}</span>
+                    {active && <span className="caret">{l.text[l.typed] === ' ' ? '\u00a0' : l.text[l.typed]}</span>}
+                    <span className="untyped">{l.text.slice(l.typed + (active ? 1 : 0))}</span>
+                  </>
+                )}
+              </code>
+              {l.by === 'ai' && <span className={`chip ${l.hallucinated && locked ? 'chip-bad' : 'chip-ai'}`}>{view.aiName}</span>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="review-side">
+        <Meter label="Time" value={view.secondsLeft} max={view.secondsTotal} tone="time" suffix="s" />
+        <div className="small">
+          Accuracy {accuracy}% · {view.typos} typo(s)
+        </div>
+        <Hint>
+          Type the highlighted line on your keyboard. A wrong key is a typo and does not move you forward. Spaces and punctuation count.
+        </Hint>
+        <button className="btn btn-small action-askAi" disabled={locked || !view.canAffordAi} onClick={() => ty({ kind: 'aiComplete' })}>
+          {view.aiName}: autocomplete this line ({view.aiCost} tokens)
+        </button>
+        <Hint>Autocomplete is instant, but sometimes it writes something plausible and wrong. Read what it wrote: a wrong line costs you at the end.</Hint>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ Package Audit
+
+const TRUTH_LABEL: Record<string, string> = {
+  used: 'real and used',
+  unused: 'real but unused',
+  typosquat: 'typosquat',
+  hallucinated: 'does not exist',
+  malicious: 'malware',
+};
+
+function AuditGame({ view, play }: { view: AuditView; play: (m: MinigameMove) => void }) {
+  const [selected, setSelected] = useState<string>(view.packages[0]!.id);
+  const locked = view.over;
+  const au = (m: AuditMove) => play({ game: 'packageAudit', ...m });
+  const pkg = view.packages.find((p) => p.id === selected)!;
+  const setVerdict = (verdict: PackageVerdict) => au({ kind: 'setVerdict', packageId: pkg.id, verdict });
+
+  return (
+    <div className="review">
+      <div className="review-diff">
+        <div className="small review-title">package.json · dependencies</div>
+        {view.packages.map((p) => (
+          <button
+            key={p.id}
+            className={`diff-line audit-line ${selected === p.id ? 'selected' : ''} ${p.typoHint ? 'suspicious' : ''} verdict-${p.verdict}`}
+            onClick={() => setSelected(p.id)}
+          >
+            <span className={`light ${p.verdict === 'remove' ? 'light-failed' : 'light-passed'}`} />
+            <code>
+              "{p.name}": "^{p.version}"
+            </code>
+            <span className="diff-notes">
+              {p.wren && <span className="chip chip-ai">{view.aiName}: {p.wren.says}</span>}
+              <span className={`chip ${p.verdict === 'remove' ? 'chip-bad' : 'chip-comment'}`}>{p.verdict}</span>
+            </span>
+            {p.truth && (
+              <span className={`diff-reveal small ${(p.truth === 'used') === (p.verdict === 'keep') ? 'reveal-ok' : 'reveal-bad'}`}>
+                Really: {TRUTH_LABEL[p.truth]}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="review-side">
+        <Meter label="Checks" value={view.checksLeft} max={view.checksTotal} tone="time" />
+        <div className="ci-actions">
+          <div className="small">
+            <span className="ticket-key">{pkg.name}</span> {pkg.version}
+          </div>
+          {pkg.typoHint && <div className="small tone-warn">{pkg.typoHint}</div>}
+          <div className="small audit-info">
+            <b>Registry:</b> {pkg.registry ?? <span className="muted">not checked</span>}
+          </div>
+          <div className="small audit-info">
+            <b>Source:</b> {pkg.source ?? <span className="muted">not read</span>}
+          </div>
+          {pkg.wren && (
+            <div className="small audit-info tone-ai">
+              {view.aiName}: "{pkg.wren.why}"
+            </div>
+          )}
+          <div className="ci-tools">
+            <button
+              className="btn btn-small"
+              disabled={locked || pkg.registry !== null || view.checksLeft < view.registryCost}
+              onClick={() => au({ kind: 'checkRegistry', packageId: pkg.id })}
+            >
+              Check registry ({view.registryCost})
+            </button>
+            <button
+              className="btn btn-small"
+              disabled={locked || pkg.source !== null || view.checksLeft < view.sourceCost}
+              onClick={() => au({ kind: 'readSource', packageId: pkg.id })}
+            >
+              Read source ({view.sourceCost})
+            </button>
+          </div>
+          <div className="ci-tools">
+            <button className={`btn btn-small ${pkg.verdict === 'keep' ? 'btn-primary' : 'btn-ghost'}`} disabled={locked} onClick={() => setVerdict('keep')}>
+              Keep
+            </button>
+            <button className={`btn btn-small ${pkg.verdict === 'remove' ? 'btn-primary' : 'btn-ghost'}`} disabled={locked} onClick={() => setVerdict('remove')}>
+              Remove
+            </button>
+          </div>
+        </div>
+        <button className="btn btn-small action-askAi" disabled={locked || view.wrenUsed || !view.canAffordAi} onClick={() => au({ kind: 'askWren' })}>
+          {view.aiName}: audit everything ({view.aiCost} tokens)
+        </button>
+        <Hint>Everything starts as "keep". Removing a package the app uses breaks the build. Keeping malware ships it.</Hint>
+        <button className="btn btn-small btn-glow" disabled={locked} onClick={() => au({ kind: 'submitAudit' })}>
+          Submit the audit
+        </button>
       </div>
     </div>
   );

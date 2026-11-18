@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { getWorld, modeOf, type Direction, type DomainEvent, type GameState } from '../../domain';
+import { getWorld, modeOf, type Direction, type DomainEvent, type GameState, type WorldView } from '../../domain';
 import type { Runtime } from '../../runtime';
 import { MOVE_MS, tileToWorld } from '../constants';
 import { faceSprite, walkSprite } from './characters';
@@ -32,15 +32,6 @@ export class OfficeScene extends Phaser.Scene {
   create() {
     this.add.image(0, 0, 'office').setOrigin(0, 0).setDepth(-1000);
     const world = getWorld(this.rt.game.getState());
-
-    for (const n of world.npcs) {
-      const pos = tileToWorld(n.x, n.y);
-      const sprite = this.add.sprite(pos.x, pos.y, `${n.sprite}_down_0`).setOrigin(0.5, 1);
-      faceSprite(sprite, n.sprite, n.facing);
-      const marker = this.add.image(pos.x, pos.y - 28, 'marker').setOrigin(0.5, 1).setDepth(10_000);
-      this.tweens.add({ targets: marker, y: marker.y - 3, yoyo: true, repeat: -1, duration: 450, ease: 'Sine.inOut' });
-      this.npcs.set(n.id, { sprite, marker, prefix: n.sprite });
-    }
 
     const h = tileToWorld(world.hero.x, world.hero.y);
     this.hero = this.add.sprite(h.x, h.y, 'hero_down_0').setOrigin(0.5, 1);
@@ -126,6 +117,16 @@ export class OfficeScene extends Phaser.Scene {
     this.sync(state, false);
   }
 
+  private addNpc(n: WorldView['npcs'][number]) {
+    const pos = tileToWorld(n.x, n.y);
+    const sprite = this.add.sprite(pos.x, pos.y, `${n.sprite}_down_0`).setOrigin(0.5, 1);
+    faceSprite(sprite, n.sprite, n.facing);
+    const marker = this.add.image(pos.x, pos.y - 28, 'marker').setOrigin(0.5, 1).setDepth(10_000);
+    this.tweens.add({ targets: marker, y: marker.y - 3, yoyo: true, repeat: -1, duration: 450, ease: 'Sine.inOut' });
+    this.npcs.set(n.id, { sprite, marker, prefix: n.sprite });
+    return this.npcs.get(n.id)!;
+  }
+
   /** Reconcile sprites with the world read model. */
   private sync(state: GameState, snapHero: boolean) {
     const world = getWorld(state);
@@ -138,9 +139,16 @@ export class OfficeScene extends Phaser.Scene {
     }
     this.hero.setDepth(this.hero.y);
 
+    // NPCs can leave the company (Act II ending), so reconcile like the bugs.
+    const present = new Set(world.npcs.map((n) => n.id));
+    for (const [id, npc] of this.npcs) {
+      if (present.has(id)) continue;
+      npc.sprite.destroy();
+      npc.marker.destroy();
+      this.npcs.delete(id);
+    }
     for (const n of world.npcs) {
-      const npc = this.npcs.get(n.id);
-      if (!npc) continue;
+      const npc = this.npcs.get(n.id) ?? this.addNpc(n);
       npc.sprite.setDepth(npc.sprite.y);
       npc.marker.setVisible(n.hasQuestMarker);
       if (snapHero) faceSprite(npc.sprite, n.sprite, n.facing);

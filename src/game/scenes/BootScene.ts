@@ -23,7 +23,7 @@ export class BootScene extends Phaser.Scene {
       this.anims.create({
         key: `${key}_idle`,
         frames: [{ key }, { key: `${key}_1` }],
-        frameRate: key === 'bug_heisenbug' ? 6 : 3,
+        frameRate: key === 'bug_heisenbug' || key === 'bug_swarm' ? 6 : key === 'bug_mimic' ? 1.5 : 3,
         repeat: -1,
       });
     }

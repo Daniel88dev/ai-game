@@ -53,6 +53,8 @@ function GameStage({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       const panel = rt.ui.get().panel;
+      // Minigames (the typing sprint) need the letter keys.
+      if (key !== 'escape' && modeOf(rt.game.getState()) === 'minigame') return;
       if (key === 'escape') {
         e.preventDefault();
         if (panel === 'none') rt.ui.open('menu');

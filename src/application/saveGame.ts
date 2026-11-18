@@ -1,4 +1,4 @@
-import { ATTRIBUTES, ATTRIBUTES_ADDED_IN_V2, GRADE_RANK, HERO_SPAWN, isWalkableTile, newGame, npcAt, type GameState } from '../domain';
+import { ATTRIBUTES, ATTRIBUTES_ADDED_IN_V2, GRADE_RANK, HERO_SPAWN, isWalkable, newGame, type GameState } from '../domain';
 
 /**
  * Save file format. Versioned so later releases can migrate old saves.
@@ -112,11 +112,9 @@ function validateState(s: unknown): GameState {
   if (!isNum(s.rngSeed)) return fail('seed');
   const base = newGame();
   const hero = h as unknown as GameState['hero'];
-  // The office changes between versions; never load the hero inside a desk or an NPC.
-  const position = isWalkableTile(hero.position) && !npcAt(hero.position) ? hero.position : HERO_SPAWN;
-  return {
+  const loaded: GameState = {
     ...base,
-    hero: { ...hero, position },
+    hero,
     flags: s.flags as string[],
     quests: s.quests as GameState['quests'],
     defeatedEncounters: s.defeatedEncounters as string[],
@@ -125,6 +123,8 @@ function validateState(s: unknown): GameState {
     dialogue: null,
     battle: null,
   };
+  // The office changes between versions; never load the hero inside a desk, an NPC or a bug.
+  return isWalkable(loaded, hero.position) ? loaded : { ...loaded, hero: { ...hero, position: HERO_SPAWN } };
 }
 
 /** Use case: save / load / list slots, on top of the SaveStore port. */

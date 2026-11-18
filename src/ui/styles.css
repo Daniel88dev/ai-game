@@ -219,6 +219,8 @@ kbd {
 .mg-body { min-height: 0; overflow: auto; }
 .mg-hint { margin: 0; line-height: 1.8; }
 .mg-meter { display: grid; grid-template-columns: 8cqw 1fr 5cqw; gap: 0.6cqw; align-items: center; }
+.mg-meter .bar-track { height: 0.9cqw; background: var(--ink); border: 1px solid var(--slate); }
+.mg-meter .bar-fill { height: 100%; }
 .meter-time .bar-fill { background: var(--orange); }
 .meter-cov .bar-fill { background: var(--yellow); }
 .meter-mut .bar-fill { background: var(--green); }
@@ -281,3 +283,27 @@ kbd {
 .act-complete h2 { margin: 0; font-weight: normal; color: var(--yellow); font-size: 1.3em; }
 .act-complete p { margin: 0; line-height: 1.9; font-size: 0.85em; }
 .attr-group { color: var(--fog); font-size: 0.75em; padding-top: 0.8cqw; }
+
+/* Typing Sprint */
+.typing { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1.2cqw; height: 100%; }
+.typing-editor { display: grid; gap: 0.4cqw; align-content: start; background: var(--ink); padding: 0.8cqw; border: 2px solid var(--dusk); }
+.typing-file { color: var(--fog); border-bottom: 1px solid var(--dusk); padding-bottom: 0.4cqw; }
+.typing-line { display: grid; grid-template-columns: 2.4cqw 1fr auto; gap: 0.6cqw; align-items: center; padding: 0.3cqw 0.4cqw; }
+.typing-line code { font-family: ui-monospace, monospace; font-size: 1.35em; white-space: pre; }
+.typing-line.active { background: var(--night); outline: 2px solid var(--cyan); }
+.typing-line.later { opacity: 0.45; }
+.typing-line.typo { outline-color: var(--red); background: color-mix(in srgb, var(--red) 25%, var(--night)); }
+.typed-ok { color: var(--green); }
+.typed-ai { color: var(--cyan); }
+.typed-bad { color: var(--cyan); }
+.untyped { color: var(--slate); }
+.caret { background: var(--paper); color: var(--ink); animation: caret 0.8s steps(2) infinite; }
+@keyframes caret { 50% { background: var(--fog); } }
+.chip-bad { background: var(--red); color: var(--ink); }
+
+/* Package Audit */
+.audit-line { grid-template-columns: auto 1fr auto; }
+.audit-line.verdict-remove code { text-decoration: line-through; color: var(--fog); }
+.audit-info { line-height: 1.7; }
+.diff-reveal.reveal-ok { color: var(--green); }
+.diff-reveal.reveal-bad { color: var(--red); }

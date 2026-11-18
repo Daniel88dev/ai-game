@@ -13,6 +13,7 @@ export const ACTION_INFO: Record<Exclude<HeroAction, 'retreat'>, { label: string
   investigate: { label: 'Read stack trace', hint: 'Costs 2 Focus. Finds clues to the root cause (bonus Debug damage).' },
   writeTest: { label: 'Write test', hint: 'Costs 2 Focus. Small hit, and the bug hits you softer. Stops regressions.' },
   askAi: { label: 'Ask PILOT', hint: 'Costs tokens. Strong AI patch, but may hallucinate.' },
+  // Once WREN is online the label changes, see queries.getBattle.
   coffee: { label: 'Coffee', hint: 'Restores Focus and some HP. Limited cups per fight.' },
 };
 
@@ -35,6 +36,12 @@ export interface EnemyTraits {
   readonly revives?: boolean;
   /** Extra hallucination chance for AI patches against this bug. */
   readonly aiConfusion?: number;
+  /** Share of every hit it shrugs off until its root cause is revealed (Confident Golem). */
+  readonly armor?: number;
+  /** HP it regains every enemy turn... */
+  readonly regen?: number;
+  /** ...until a test exists ('test', Copy-Paste Swarm) or the root cause is known ('rootCause', Phantom Package). */
+  readonly regenStopsOn?: 'test' | 'rootCause';
 }
 
 export interface EnemyDefinition {
@@ -97,6 +104,22 @@ export function startBattle(encounterId: string, enemy: EnemyDefinition): Battle
     revived: false,
     phase: 'heroTurn',
   };
+}
+
+/** Damage after armor: an armored bug soaks up part of every hit until you check its claims. */
+export function armored(damage: number, battle: Pick<Battle, 'rootCauseRevealed'>, enemy: EnemyDefinition): { damage: number; absorbed: number } {
+  const armor = enemy.traits?.armor ?? 0;
+  if (!armor || battle.rootCauseRevealed || damage <= 0) return { damage, absorbed: 0 };
+  const after = Math.max(1, Math.round(damage * (1 - armor)));
+  return { damage: after, absorbed: damage - after };
+}
+
+/** Does the bug regenerate this enemy turn? */
+export function regenerates(battle: Pick<Battle, 'rootCauseRevealed' | 'testWritten'>, enemy: EnemyDefinition): number {
+  const regen = enemy.traits?.regen ?? 0;
+  if (!regen) return 0;
+  const stopped = enemy.traits?.regenStopsOn === 'rootCause' ? battle.rootCauseRevealed : battle.testWritten;
+  return stopped ? 0 : regen;
 }
 
 export const cluesNeeded = (enemy: EnemyDefinition): number => enemy.traits?.cluesNeeded ?? 1;

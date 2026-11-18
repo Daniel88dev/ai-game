@@ -106,6 +106,8 @@ export function evolve(state: GameState, event: DomainEvent): GameState {
       return withBattle(state, (b) => ({ ...b, enemyTurns: b.enemyTurns + 1 }));
     case 'EnemyGrew':
       return withBattle(state, (b) => ({ ...b, attackBonus: event.attackBonus }));
+    case 'EnemyRegenerated':
+      return withBattle(state, (b) => ({ ...b, enemyHp: Math.min(b.enemyMaxHp, b.enemyHp + event.amount) }));
     case 'EnemyRevived':
       return withBattle(state, (b) => ({ ...b, enemyHp: event.hp, revived: true }));
     case 'HeavyAttackTelegraphed':

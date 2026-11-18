@@ -53,7 +53,10 @@ export class BattleLogProjection {
       }
       case 'HeroDebugged':
         if (e.missed) return { text: ENEMIES[this.enemyId]?.missLine ?? 'Your blind fix misses.', tone: 'bad' };
-        return { text: `${e.critical ? 'Clean hit! ' : ''}Your fix lands for ${e.damage} damage.`, tone: 'good' };
+        return {
+          text: `${e.critical ? 'Clean hit! ' : ''}Your fix lands for ${e.damage} damage.${e.absorbed ? ` Its confidence soaks up ${e.absorbed}.` : ''}`,
+          tone: 'good',
+        };
       case 'StackTraceRead':
         if (e.rootCause) return { text: `Root cause found: ${e.rootCause}.`, tone: 'good' };
         if (e.success) return { text: `A clue! ${e.clues}/${e.cluesNeeded}. The pattern is starting to show.`, tone: 'info' };
@@ -63,16 +66,21 @@ export class BattleLogProjection {
       case 'TestWritten':
         return { text: `You write a failing test, then make it pass. ${e.damage} damage, and the bug hits softer now.`, tone: 'good' };
       case 'AiPatchApplied':
-        return { text: `PILOT autocompletes a patch: ${e.damage} damage. (-${e.tokensSpent} tokens)`, tone: 'ai' };
+        return {
+          text: `${e.by === 'WREN' ? 'WREN ships an agent patch' : 'PILOT autocompletes a patch'}: ${e.damage} damage.${e.absorbed ? ` (${e.absorbed} bounced off)` : ''} (-${e.tokensSpent} tokens)`,
+          tone: 'ai',
+        };
       case 'AiHallucinated':
         return {
-          text: `${ENEMIES[this.enemyId]?.hallucination ?? 'PILOT hallucinates.'} The bug heals ${e.enemyHealed}. (-${e.tokensSpent} tokens)`,
+          text: `${ENEMIES[this.enemyId]?.hallucination ?? `${e.by ?? 'PILOT'} hallucinates.`} ${e.enemyHealed ? ` The bug heals ${e.enemyHealed}.` : ''} (-${e.tokensSpent} tokens)`,
           tone: 'bad',
         };
       case 'AttackDodged':
         return { text: `${this.enemyName} throws ${e.attackName}, but you already shipped past it. Dodged!`, tone: 'good' };
       case 'EnemyGrew':
         return { text: `${this.enemyName} leaks more memory. It hits harder now (+${e.attackBonus}).`, tone: 'warn' };
+      case 'EnemyRegenerated':
+        return { text: `${this.enemyName} grows back ${e.amount} HP. More copies where that came from.`, tone: 'warn' };
       case 'EnemyRevived':
         return { text: `${this.enemyName} rises again with ${e.hp} HP. No test was guarding the fix.`, tone: 'bad' };
       case 'CoffeeDrunk':

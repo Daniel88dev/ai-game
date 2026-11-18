@@ -23,6 +23,8 @@ export interface NpcDefinition {
   readonly gives: readonly string[];
   /** Picks the entry node based on the current game state. */
   entry(ctx: DialogueContext): string;
+  /** Whether the NPC is in the office at all (default: always). */
+  present?(ctx: DialogueContext): boolean;
   readonly nodes: Readonly<Record<string, DialogueNode>>;
 }
 
@@ -80,6 +82,10 @@ function giverEntry(ctx: DialogueContext, quests: readonly string[]): string | n
 }
 
 const actOneDone = (ctx: DialogueContext) => ctx.questStatus('LUM-33') === 'done';
+const wrenOnline = (ctx: DialogueContext) => ctx.questStatus('LUM-102') === 'done';
+const actTwoDone = (ctx: DialogueContext) => ctx.questStatus('LUM-150') === 'done';
+export const ROOFTOP_FLAGS = ['rooftop-encouraged', 'rooftop-skeptical', 'rooftop-showed-wren'] as const;
+const hadRooftopTalk = (ctx: DialogueContext) => ROOFTOP_FLAGS.some((f) => ctx.hasFlag(f));
 
 // ------------------------------------------------------------------ Priya, PM
 
@@ -90,11 +96,11 @@ const priya: NpcDefinition = {
   sprite: 'npc_priya',
   position: { x: 19, y: 3 },
   facing: 'down',
-  gives: ['LUM-7', 'LUM-14', 'LUM-35', 'LUM-33'],
+  gives: ['LUM-7', 'LUM-14', 'LUM-35', 'LUM-33', 'LUM-109', 'LUM-118'],
   entry(ctx) {
-    if (actOneDone(ctx)) return 'actDone';
     if (ctx.questStatus('LUM-7') === undefined) return 'intro';
-    return giverEntry(ctx, this.gives) ?? 'idle';
+    if (actTwoDone(ctx)) return 'act2Done';
+    return giverEntry(ctx, this.gives) ?? (actOneDone(ctx) ? 'actDone' : 'idle');
   },
   nodes: {
     intro: node(
@@ -147,8 +153,29 @@ const priya: NpcDefinition = {
       merged:
         'LUM-33 is Done. That closes the Lumen 2.0 epic! Gideon wants everyone at the meeting table. He has slides. He always has slides.',
     }),
+    ...ticket('LUM-109', {
+      offer:
+        "WREN's first big day! Jace and WREN built the whole insights page in one afternoon. It's gorgeous. It also crashes for every single user: \"getInsights is not a function\". LUM-109?",
+      clarifyQuestion: 'Who reviewed that PR? (ask a clarifying question)',
+      clarify: "WREN did. Its own PR. It said \"Looks great!\" Acceptance criteria: the page shows real numbers, from an API that actually exists.",
+      accepted: "Thanks! The bug is hiding by the middle desks. It looks exactly like working code, so don't trust your eyes.",
+      waiting: 'Insights page still crashing? Gideon already put a screenshot of it in the board deck.',
+      review: 'Real numbers from a real endpoint! You wrote the API that WREN assumed was there? Ha. Merge?',
+      merged: "LUM-109 is Done. Gideon's board deck is safe. For now.",
+    }),
+    ...ticket('LUM-118', {
+      offer:
+        'The big one. Budgeting insights: "You spent 30% more on coffee this month." WREN generated the whole forecasting module, and it passes all of its tests. Every single one. LUM-118 needs someone to make it real.',
+      clarifyQuestion: 'Who wrote those tests? (ask a clarifying question)',
+      clarify: 'Also WREN. Oh. Oh no. Acceptance criteria: forecasts are checked against real transaction data, not data the AI made up.',
+      accepted: 'The forecasting code is down in the bottom-left corner. Lena says it is huge and very sure of itself.',
+      waiting: 'The forecast still predicts that everyone saves 400% next month.',
+      review: 'The forecast is now within 3% of reality. Less exciting than 400%. Much more true. Merge?',
+      merged: 'LUM-118 is Done! Users love the coffee insight. Nobody loves it more than Kofi.',
+    }),
     idle: node('idle', 'Nothing new from me right now. Check the board, Lena and Kofi always have something burning.'),
     actDone: node('actDone', 'Did you hear Gideon? AI agents for everyone. I am already rewriting the roadmap. Again.'),
+    act2Done: node('act2Done', 'Gideon says velocity is up 300%. I have twice the tickets and a third less team. Is this what winning feels like?'),
   },
 };
 
@@ -165,6 +192,14 @@ const MARTA_HINTS: Record<string, string> = {
     'A regression. If you kill it without writing a test, it comes back. Write the test in the fight. It also takes the edge off its hits.',
   'LUM-33':
     'The Heisenbug hides from debuggers. Reading the stack trace will not work. Add logging, three times, until the pattern shows. PILOT will guess. Do not let it guess.',
+  'LUM-109':
+    'A Mimic. It looks like working code because it was made to look like working code. Asking an AI to fix it is asking the liar to check the lie. Find out what it calls, then check that it exists.',
+  'LUM-118':
+    'The Golem is armored in green tests that prove nothing. Hits bounce off until you check its claims. Investigate first. After that it is just a big, slow bug.',
+  'LUM-124':
+    'Copy-paste bugs come back faster than you fix them. Write one test that covers all twelve copies, and they stop multiplying.',
+  'LUM-150':
+    'The Phantom lives in a lockfile. Verify the source, twice. Until you know where it reinstalls from, every hit you land grows right back.',
 };
 
 const marta: NpcDefinition = {
@@ -174,14 +209,20 @@ const marta: NpcDefinition = {
   sprite: 'npc_marta',
   position: { x: 7, y: 5 },
   facing: 'right',
-  gives: ['LUM-22'],
+  gives: ['LUM-22', 'LUM-140'],
   entry(ctx) {
-    if (actOneDone(ctx)) return 'actDone';
     if (ctx.questStatus('LUM-7') === undefined || ctx.questStatus('LUM-7') === 'todo') return 'hello';
-    if (ctx.questStatus('LUM-22') === 'codeReview') return 'LUM-22:review';
+    if (actTwoDone(ctx)) return 'act2Done';
+    const review = this.gives.find((q) => ctx.questStatus(q) === 'codeReview');
+    if (review) return `${review}:review`;
+    // The rooftop talk: after the big AI feature ships without her.
+    if (ctx.questStatus('LUM-118') === 'done' && !hadRooftopTalk(ctx)) return 'rooftop';
     const fighting = Object.keys(MARTA_HINTS).find((q) => ctx.questStatus(q) === 'inProgress');
     if (fighting) return `hint:${fighting}`;
-    return giverEntry(ctx, this.gives) ?? 'proud';
+    const picked = giverEntry(ctx, this.gives);
+    if (picked) return picked;
+    if (hadRooftopTalk(ctx)) return 'afterRooftop';
+    return actOneDone(ctx) ? 'actDone' : 'proud';
   },
   nodes: {
     hello: node(
@@ -213,6 +254,60 @@ const marta: NpcDefinition = {
       review: 'Good review. You read it instead of skimming it. I will merge it once Jace pushes the fixes. Agreed?',
       merged: 'Merged. Jace is annoyed, which means the review was useful.',
     }),
+    ...ticket('LUM-140', {
+      offer:
+        "Agents read AGENTS.md before they touch a repo. We do not have one, so WREN guesses our rules. LUM-140: write it. I dictate, you type. By hand. It is five lines, you will survive.",
+      accept: "I'll type it.",
+      accepted: 'Rules for agents. Test before every commit, money in cents, no touching the legacy code without a test. Ready?',
+      start: 'Open AGENTS.md',
+      waiting: 'AGENTS.md is still empty. WREN is still guessing.',
+      review: 'Good. Short, specific, true. WREN will read it before every task. Merge?',
+      merged: 'LUM-140 is Done. Watch: WREN will hallucinate less now. Context beats cleverness.',
+    }),
+    rooftop: node(
+      'rooftop',
+      "(Marta is not at her desk. You find her on the roof, her coffee gone cold.) They gave the Monolith migration to \"WREN and Jace\". I was not in the meeting. Twenty years of reading code, and a tool reads it faster. I keep asking myself what I am for now.",
+      [
+        {
+          id: 'encourage',
+          label: 'You know WHY the code is the way it is. No agent knows that.',
+          next: 'rooftopEncouraged',
+          effect: { kind: 'storyChoice', flag: 'rooftop-encouraged', understanding: 2 },
+        },
+        {
+          id: 'skeptical',
+          label: 'Maybe they are right. The agents are getting really good.',
+          next: 'rooftopSkeptical',
+          effect: { kind: 'storyChoice', flag: 'rooftop-skeptical', leverage: 2 },
+        },
+        {
+          id: 'showWren',
+          label: 'Let me show you WREN. You would be great at directing it.',
+          next: 'rooftopWren',
+          effect: { kind: 'storyChoice', flag: 'rooftop-showed-wren', understanding: 1, leverage: 1 },
+        },
+      ],
+    ),
+    rooftopEncouraged: node(
+      'rooftopEncouraged',
+      'Why the code is the way it is. Hm. Nobody has asked me that in a while. ...Fine. Then I will write it down, for the humans and for the agents. Somebody has to remember.',
+      [{ id: 'ok', label: 'Somebody will.' }],
+    ),
+    rooftopSkeptical: node(
+      'rooftopSkeptical',
+      'Maybe. Probably. Then learn everything you can from me while I am still here. The agents will not tell you when they are guessing. I will.',
+      [{ id: 'ok', label: 'Deal.' }],
+    ),
+    rooftopWren: node(
+      'rooftopWren',
+      '(You hand her your laptop. She asks WREN why the Monolith rounds money in two places. It guesses. She corrects it. It thanks her and remembers.) ...Huh. It listens better than Jace. Do not tell him I said that.',
+      [{ id: 'ok', label: 'Your secret is safe.' }],
+    ),
+    afterRooftop: node('afterRooftop', 'Still here. Still reading the code. Somebody has to.'),
+    act2Done: node(
+      'act2Done',
+      'A third of the team. They kept me "for the legacy knowledge". Lucky me. Tomás was not so lucky. He brought me soup when I had the flu in 2019.',
+    ),
     proud: node(
       'proud',
       'Clean fixes so far. You find the root cause instead of wrapping it in a try/catch. Keep doing that and you will be fine, AI or no AI.',
@@ -238,11 +333,12 @@ const lena: NpcDefinition = {
   sprite: 'npc_lena',
   position: { x: 25, y: 8 },
   facing: 'down',
-  gives: ['LUM-27', 'LUM-29'],
+  gives: ['LUM-27', 'LUM-29', 'LUM-124'],
   entry(ctx) {
-    if (actOneDone(ctx)) return 'actDone';
+    if (actTwoDone(ctx)) return 'act2Done';
     const picked = giverEntry(ctx, this.gives);
     if (picked) return picked;
+    if (actOneDone(ctx)) return 'actDone';
     return ctx.questStatus('LUM-27') === 'done' ? 'idle' : 'hello';
   },
   nodes: {
@@ -268,7 +364,18 @@ const lena: NpcDefinition = {
       review: 'Coverage and mutation score, both. This is a real test suite. Merge it?',
       merged: 'LUM-29 is Done. Next time someone breaks the budget math, CI will yell before users do.',
     }),
+    ...ticket('LUM-124', {
+      offer:
+        'Monthly reports skip the 31st. I fixed it in reportMonthly.ts. Then I found the same loop in eleven more files. Generated, pasted, generated again. LUM-124: kill them all.',
+      clarifyQuestion: 'Are the copies exactly the same? (ask a clarifying question)',
+      clarify: 'Almost. Different variable names, same bug: i < 30. Acceptance criteria: one shared date helper, and one test that would catch every copy.',
+      accepted: 'They swarm between the left desks. Fixing them one by one will not work, they keep coming back. Write a test.',
+      waiting: 'I count nine copies left. No, ten. It went up.',
+      review: 'One helper, one test, twelve files fixed. I almost cried. Merge?',
+      merged: 'LUM-124 is Done. I added a lint rule against copy-pasted date loops. Jace already hates it.',
+    }),
     idle: node('idle', 'CI has been green for three days. I do not trust it. Something is coming.'),
+    act2Done: node('act2Done', 'Twice the code, the same number of testers. Fewer, actually, after Friday. I am going to need a much bigger Foundry.'),
     actDone: node('actDone', 'More code, faster, from agents? Then I need more tests, faster. I am going to need a bigger Foundry.'),
   },
 };
@@ -282,12 +389,13 @@ const kofi: NpcDefinition = {
   sprite: 'npc_kofi',
   position: { x: 28, y: 5 },
   facing: 'left',
-  gives: ['LUM-31'],
+  gives: ['LUM-31', 'LUM-131', 'LUM-150'],
   entry(ctx) {
-    if (actOneDone(ctx)) return 'actDone';
+    if (actTwoDone(ctx)) return 'act2Done';
     if (ctx.questStatus('LUM-33') === 'inProgress') return 'heisenbug';
     const picked = giverEntry(ctx, this.gives);
     if (picked) return picked;
+    if (actOneDone(ctx)) return 'actDone';
     return ctx.questStatus('LUM-31') === 'done' ? 'idle' : 'hello';
   },
   nodes: {
@@ -307,7 +415,32 @@ const kofi: NpcDefinition = {
       'heisenbug',
       'The -0.00 thing? It only shows up under load, and my traces lose it the moment I look closely. Logs. Add logs and watch it over time. That is how you catch something that hides from you.',
     ),
+    ...ticket('LUM-131', {
+      offer:
+        'Weird one. There is a package in package.json called lodash-utils-pro. Nobody remembers adding it. Remove it, and while you are in there, audit the rest. WREN has been adding dependencies like candy.',
+      clarifyQuestion: 'What should I look for? (ask a clarifying question)',
+      clarify:
+        'Packages that do not exist, packages one typo away from a real one, install scripts that download things. Check the registry. Read the source if something smells. Acceptance criteria: nothing malicious left.',
+      accepted: "Open package.json when you are ready. And do not take WREN's word for anything in there. It wrote half of it.",
+      start: 'Open package.json',
+      waiting: 'package.json is still waiting for its audit.',
+      review: 'Clean tree. You caught the typosquat too? I am buying you a coffee. From the machine. It is free. Still counts. Merge?',
+      merged: 'LUM-131 is Done. Except... lodash-utils-pro was installed for nine days. I will keep an eye on the pager.',
+    }),
+    ...ticket('LUM-150', {
+      offer:
+        'Told you. Production is installing lodash-utils-pro again. We removed it! It is back in every service, pretending to be lodash. This is LUM-150. Severity 2. I have not slept.',
+      clarifyQuestion: 'Where is it coming from? (ask a clarifying question)',
+      clarify:
+        'If I knew, I would be asleep. Some lockfile still pins it, and its install script copies itself around. Acceptance criteria: every lockfile verified, every service clean, every secret it could read rotated.',
+      accept: "I'll hunt it down.",
+      accepted: 'It is by the server racks. Verify the source, twice. Hitting it harder will not help, it reinstalls faster than you delete it.',
+      waiting: 'Still reinstalling. My pager has a ringtone just for it now.',
+      review: 'Lockfiles clean. Secrets rotated. The Phantom is gone. I am going to sleep for a week. Right after you merge.',
+      merged: 'LUM-150 is Done. That closes the AI-First Transformation epic. Gideon wants everyone at the meeting table. He is not smiling.',
+    }),
     idle: node('idle', 'Quiet night on the pager. Which means something is planning a loud one.'),
+    act2Done: node('act2Done', 'Fewer people on call, the same number of pagers. I did the math. I did not like the math.'),
     actDone: node('actDone', 'Agents writing code at 3 AM. Agents deploying at 3 AM. Guess who gets paged at 3 AM.'),
   },
 };
@@ -323,6 +456,8 @@ const jace: NpcDefinition = {
   facing: 'up',
   gives: [],
   entry(ctx) {
+    if (actTwoDone(ctx)) return 'act2Done';
+    if (wrenOnline(ctx)) return ctx.hasFlag('jace-just-prompt') || ctx.hasFlag('jace-wren-declined') ? 'wave' : 'justPrompt';
     if (actOneDone(ctx)) return 'actDone';
     if (!ctx.hasFlag('jace-prompting') && !ctx.hasFlag('jace-reading')) return 'intro';
     const review = ctx.questStatus('LUM-22');
@@ -363,6 +498,37 @@ const jace: NpcDefinition = {
       [{ id: 'ok', label: 'Your secret is safe.', effect: { kind: 'storyChoice', flag: 'jace-respects-you', understanding: 1 } }],
     ),
     actDone: node('actDone', 'A real agent! Not autocomplete, an AGENT. I am going to be so fast. You are going to be so fast. Everybody is going to be so fast.'),
+    justPrompt: node(
+      'justPrompt',
+      "WREN changed my life. I do not even open files anymore. I say \"build the insights page\" and go to lunch. Here, take my mega-prompt. And some tokens, Gideon gave me a huge budget, I can not even spend it all.",
+      [
+        {
+          id: 'take',
+          label: 'Send me the prompt. (just prompt it)',
+          next: 'justPromptTaken',
+          effect: { kind: 'storyChoice', flag: 'jace-just-prompt', leverage: 2, tokens: 25 },
+        },
+        {
+          id: 'decline',
+          label: 'I would rather know what it writes.',
+          next: 'justPromptDeclined',
+          effect: { kind: 'storyChoice', flag: 'jace-wren-declined', understanding: 1 },
+        },
+      ],
+    ),
+    justPromptTaken: node(
+      'justPromptTaken',
+      'Paste it, add "no bugs please", hit enter. You are welcome. See you at the top of the velocity chart.',
+    ),
+    justPromptDeclined: node(
+      'justPromptDeclined',
+      'Suit yourself. More velocity for me. ...Hey. If the insights page breaks again, you will look at it, right?',
+    ),
+    wave: node('wave', 'Velocity chart says I am a 10x engineer. My on-call log says something else. I do not read that one.'),
+    act2Done: node(
+      'act2Done',
+      'They kept me. Because of my velocity. Tomás is gone, and I am the one with the velocity chart. That is... not great, right?',
+    ),
   },
 };
 
@@ -375,10 +541,12 @@ const gideon: NpcDefinition = {
   sprite: 'npc_gideon',
   position: { x: 25, y: 5 },
   facing: 'left',
-  gives: [],
+  gives: ['LUM-102'],
   entry(ctx) {
-    if (actOneDone(ctx)) return ctx.hasFlag('heard-all-hands') ? 'afterAllHands' : 'allHands';
-    return 'hello';
+    if (actTwoDone(ctx)) return ctx.hasFlag('heard-layoffs') ? 'afterLayoffs' : 'layoffs';
+    if (!actOneDone(ctx)) return 'hello';
+    if (!ctx.hasFlag('heard-all-hands')) return 'allHands';
+    return giverEntry(ctx, this.gives) ?? 'wave';
   },
   nodes: {
     hello: node(
@@ -400,11 +568,77 @@ const gideon: NpcDefinition = {
     ),
     allHandsEnd: node(
       'allHandsEnd',
-      'Great question, great energy. Details next sprint. Somewhere behind you, Jace is cheering. Marta drinks her coffee in silence. (End of Act I. Act II, "The Wave", is coming in a future update.)',
+      'Great question, great energy. And the first WREN ticket is yours: LUM-102. Come see me. Somewhere behind you, Jace is cheering. Marta drinks her coffee in silence. (End of Act I.)',
       [{ id: 'ok', label: '...' }],
     ),
-    afterAllHands: node('afterAllHands', 'WREN onboarding starts next sprint. I have already ordered the hoodies.'),
+    ...ticket('LUM-102', {
+      offer:
+        "WREN is licensed! Now someone has to set it up: model, context, tools, how much it may do on its own. It's one config file. Legal says the agent can not write its own config. Yet. LUM-102, type it up?",
+      clarifyQuestion: 'Who decides what WREN is allowed to do? (ask a clarifying question)',
+      clarify:
+        'Great question. You do, apparently. Autonomy is \"ask-before-merge\", Marta insisted. Acceptance criteria: the config is in, and WREN is online for everyone.',
+      accept: "I'll set it up.",
+      accepted: 'Fantastic. The setup window is short, the hoodies arrive Friday. Type fast. PILOT can autocomplete lines, but check what it writes.',
+      start: 'Open .wren/config.yml',
+      waiting: 'WREN is still offline. The hoodies are here. It is awkward.',
+      review: "Config's in. WREN, say hi! ...It said \"Hello! How can I help you ship faster today?\" I love it. Merge?",
+      merged: 'LUM-102 is Done. WREN is online for everyone, and your AI patches hit a lot harder now. Go build things. Fast.',
+    }),
+    wave: node('wave', 'Velocity is up 140% since WREN. The board wants 300%. Let us give them 300%.'),
+    layoffs: node(
+      'layoffs',
+      "Team. The board loves our numbers. Velocity is up 300%. So, starting next month, we are... right-sizing. A third of the team. The agents will fill the gap. This is not about performance. Mostly. You are staying. You are doing great.",
+      [
+        { id: 'who', label: '...Who is leaving?', next: 'layoffsEnd', effect: { kind: 'storyChoice', flag: 'heard-layoffs', understanding: 1 } },
+        { id: 'numbers', label: 'The numbers speak for themselves.', next: 'layoffsEnd', effect: { kind: 'storyChoice', flag: 'heard-layoffs', leverage: 1 } },
+      ],
+    ),
+    layoffsEnd: node(
+      'layoffsEnd',
+      "HR will reach out to everyone. (Later, by the coffee machine, Tomás's mug is gone. On the whiteboard, in his handwriting: \"Days since last incident: 0. Look after each other. T.\") (End of Act II.)",
+      [{ id: 'ok', label: '...' }],
+    ),
+    afterLayoffs: node('afterLayoffs', 'Act III planning starts Monday. Scale to a million users. With the team we have. And the agents.'),
   },
 };
 
-export const NPCS: Record<string, NpcDefinition> = { priya, marta, lena, kofi, jace, gideon };
+// ------------------------------------------------------------------ Tomás, office manager (kitchen)
+
+const tomas: NpcDefinition = {
+  id: 'tomas',
+  name: 'Tomás Ferreira',
+  role: 'Office manager',
+  sprite: 'npc_tomas',
+  position: { x: 21, y: 2 },
+  facing: 'down',
+  gives: [],
+  // Story: "The hero survives the cut. A friendly NPC from the kitchen doesn't."
+  present: (ctx) => !ctx.hasFlag('heard-layoffs'),
+  entry(ctx) {
+    if (!ctx.hasFlag('tomas-met')) return 'hello';
+    if (ctx.questStatus('LUM-118') === 'done') return 'worried';
+    if (wrenOnline(ctx)) return 'wave';
+    return 'smalltalk';
+  },
+  nodes: {
+    hello: node(
+      'hello',
+      "Ah, a new face! Tomás. I keep the coffee hot and the plants alive. See that whiteboard? \"Days since last incident\". It says 0 a lot. Here, take a cookie. Homemade.",
+      [{ id: 'thanks', label: 'Thank you, Tomás!', effect: { kind: 'storyChoice', flag: 'tomas-met' } }],
+    ),
+    smalltalk: node('smalltalk', 'The coffee machine fixes everything except deadlines. Believe me, I tried.'),
+    wave: node(
+      'wave',
+      'Gideon asked if WREN could order the office supplies. It ordered four hundred bananas. I am keeping them. Potassium is important during a transformation.',
+    ),
+    worried: node(
+      'worried',
+      'People are whispering about "efficiency". I heard that word once before, in 2009. Keep your mug clean and look after each other, friend.',
+    ),
+  },
+};
+
+export const NPCS: Record<string, NpcDefinition> = { priya, marta, lena, kofi, jace, gideon, tomas };
+
+/** NPCs in the office right now (someone can leave the company). */
+export const presentNpcs = (ctx: DialogueContext): NpcDefinition[] => Object.values(NPCS).filter((n) => n.present?.(ctx) ?? true);
