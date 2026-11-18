@@ -5,7 +5,7 @@ import { run } from './testing';
 describe('progression', () => {
   it('computes level-ups across thresholds', () => {
     expect(levelsGained({ level: 1, xp: 0 }, 49)).toEqual({ levels: [], xpLeft: 49 });
-    expect(levelsGained({ level: 1, xp: 40 }, 120)).toEqual({ levels: [2, 3], xpLeft: 10 });
+    expect(levelsGained({ level: 1, xp: 40 }, 145)).toEqual({ levels: [2, 3], xpLeft: 10 });
   });
 
   it('spending a point raises the attribute and its derived stat', () => {
