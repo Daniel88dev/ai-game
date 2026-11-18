@@ -236,7 +236,7 @@ const lena: NpcDefinition = {
   name: 'Lena Ortiz',
   role: 'QA Lead',
   sprite: 'npc_lena',
-  position: { x: 26, y: 2 },
+  position: { x: 25, y: 8 },
   facing: 'down',
   gives: ['LUM-27', 'LUM-29'],
   entry(ctx) {

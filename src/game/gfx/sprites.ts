@@ -136,6 +136,86 @@ const BEETLE_STEP = (() => {
   return pad(g, 16, 16);
 })();
 
+export const IMP = pad([
+  '',
+  '...k........k',
+  '...kok....kok',
+  '....kokkkkok',
+  '....koooooook',
+  '...kowkoowkok',
+  '...kooooooook',
+  '....koOkkOok',
+  '.....kooook',
+  '....kkOooOkk',
+  '...koOooooOok',
+  '..k.kOooooOk.k',
+  '.....koOOok',
+  '....kok..kok',
+  '....kk....kk',
+], 16, 16);
+
+const IMP_HOP = (() => {
+  const g = [IMP[0]!, ...IMP.slice(2), IMP[1]!];
+  return pad(g, 16, 16);
+})();
+
+export const SLIME = pad([
+  '',
+  '',
+  '',
+  '.......kk',
+  '......kGGk',
+  '.....kGGGGk',
+  '....kGwGGwGk',
+  '...kGGkGGkGGk',
+  '...kGGGGGGGGk',
+  '..kGnGGGGGGnGk',
+  '..kGGGnnnnGGGk',
+  '.kGGGGGGGGGGGGk',
+  '.knGGGGGGGGGGnk',
+  '.knnnnnnnnnnnnk',
+  '..kkkkkkkkkkkk',
+], 16, 16);
+
+const SLIME_SQUISH = pad([
+  '',
+  '',
+  '',
+  '',
+  '',
+  '.......kk',
+  '.....kkGGkk',
+  '...kkGwGGwGkk',
+  '..kGGGkGGkGGGk',
+  '.kGGGGGGGGGGGGk',
+  '.kGnGGnnnnGGnGk',
+  'kGGGGGGGGGGGGGGk',
+  'knGGGGGGGGGGGGnk',
+  'knnnnnnnnnnnnnnk',
+  '.kkkkkkkkkkkkkk',
+], 16, 16);
+
+export const HEISENBUG = pad([
+  '',
+  '.k..........k',
+  '..k...kk...k',
+  '...k.kppk.k',
+  '....kppppk',
+  '...kpwkkwpk',
+  '..kkppppppkk',
+  '.k.kPPccPPk.k',
+  '...kpPccPpk',
+  '..kppPccPppk',
+  '..kpPPPPPPpk',
+  '.k.kpPppPpk.k',
+  '....kPPPPk',
+  '...k.kkkk.k',
+  '..k........k',
+], 16, 16);
+
+/** Second frame: half of it is not there. That is the point. */
+const HEISENBUG_FLICKER = HEISENBUG.map((row, y) => [...row].map((ch, x) => ((x + y) % 2 === 0 ? '.' : ch)).join(''));
+
 export const DRONE = pad([
   '',
   '.......kk',
@@ -157,6 +237,11 @@ export const CHECK = pad(['......kk', '.....kGk', 'kk..kGk.', 'kGkkGk..', '.kGGk
 
 const PRIYA_SWAP = { h: 'd', s: 'x', S: 'X', b: 'p', B: 'P', c: 'y', m: 'k', w: 'l' };
 const MARTA_SWAP = { h: 'l', b: 'n', B: 'k', c: 'G', w: 'x' };
+const LENA_SWAP = { h: 'X', b: 'G', B: 'n', c: 'w', m: 'd', w: 'k' };
+const KOFI_SWAP = { h: 'k', s: 'X', S: 'h', b: 'o', B: 'O', c: 'y', m: 'd' };
+const JACE_SWAP = { h: 'y', b: 'c', B: 'C', c: 'w', m: 'g' };
+const GIDEON_SWAP = { h: 'l', b: 'd', B: 'm', c: 'p', m: 'g', w: 'k' };
+const REVENANT_SWAP = { r: 'l', R: 'g', w: 'c' };
 
 export interface SpriteDef {
   key: string;
@@ -182,8 +267,20 @@ export const SPRITES: SpriteDef[] = [
   ...characterSet('hero'),
   ...characterSet('npc_priya', PRIYA_SWAP),
   ...characterSet('npc_marta', MARTA_SWAP),
+  ...characterSet('npc_lena', LENA_SWAP),
+  ...characterSet('npc_kofi', KOFI_SWAP),
+  ...characterSet('npc_jace', JACE_SWAP),
+  ...characterSet('npc_gideon', GIDEON_SWAP),
   { key: 'bug_null_pointer', grid: BEETLE },
   { key: 'bug_null_pointer_1', grid: BEETLE_STEP },
+  { key: 'bug_off_by_one', grid: IMP },
+  { key: 'bug_off_by_one_1', grid: IMP_HOP },
+  { key: 'bug_memory_leak', grid: SLIME },
+  { key: 'bug_memory_leak_1', grid: SLIME_SQUISH },
+  { key: 'bug_regression', grid: swap(BEETLE, REVENANT_SWAP) },
+  { key: 'bug_regression_1', grid: swap(BEETLE_STEP, REVENANT_SWAP) },
+  { key: 'bug_heisenbug', grid: HEISENBUG },
+  { key: 'bug_heisenbug_1', grid: HEISENBUG_FLICKER },
   { key: 'drone', grid: DRONE },
   { key: 'marker', grid: MARKER },
   { key: 'check', grid: CHECK },

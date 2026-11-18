@@ -170,7 +170,7 @@ describe('minigames inside the game', () => {
     return {
       ...s,
       quests: { 'LUM-7': { status: 'done', clarified: false }, 'LUM-27': { status: 'inProgress', clarified: false } },
-      hero: { ...s.hero, position: { x: 26, y: 3 }, facing: 'up' },
+      hero: { ...s.hero, position: { x: 25, y: 9 }, facing: 'up' },
     };
   };
 

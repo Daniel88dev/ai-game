@@ -8,6 +8,7 @@ import {
   WRITE_TEST_FOCUS_COST,
   type HeroAction,
 } from './combat/battle';
+import { ENCOUNTERS } from './content/encounters';
 import { ENEMIES } from './content/enemies';
 import { NPCS } from './content/npcs';
 import { QUEST_ORDER, QUESTS } from './content/quests';
@@ -195,6 +196,8 @@ export interface BattleView {
   dodgeChance: number;
   /** Short notes about how this bug plays, shown under the bar. */
   traits: string[];
+  /** Who to tell once the bug is fixed. */
+  reportTo: string;
   actions: BattleActionView[];
 }
 
@@ -255,6 +258,7 @@ export function getBattle(state: GameState): BattleView | null {
     attackBonus: b.attackBonus,
     dodgeChance: dodgeChance(hero.attributes.velocity),
     traits,
+    reportTo: NPCS[QUESTS[ENCOUNTERS[b.encounterId]?.questId ?? '']?.giverNpcId ?? '']?.name.split(' ')[0] ?? 'the team',
     actions,
   };
 }

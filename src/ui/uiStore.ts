@@ -1,6 +1,6 @@
 import type { DomainEvent } from '../domain';
 
-export type Panel = 'none' | 'menu' | 'questBoard' | 'character' | 'help';
+export type Panel = 'none' | 'menu' | 'questBoard' | 'character' | 'help' | 'actComplete';
 
 export interface Toast {
   id: number;
@@ -23,6 +23,7 @@ export class UiStore {
   private snap: UiSnapshot = { panel: 'none', busy: false, toasts: [] };
   private readonly listeners = new Set<() => void>();
   private nextId = 1;
+  private pendingActComplete = false;
 
   get = (): UiSnapshot => this.snap;
 
@@ -75,7 +76,26 @@ export class UiStore {
           this.toast(`Level up! Level ${e.level}. +${e.attributePoints} attribute points`, 'good');
           break;
         case 'HeroRested':
-          this.toast('Fresh coffee. HP and Focus restored.', 'good');
+          this.toast('Fresh coffee. HP, Focus and token budget restored.', 'good');
+          break;
+        case 'QuestReadyForReview':
+          this.toast(`${e.questId} moved to Code Review`, 'info');
+          break;
+        case 'TokensGifted':
+          this.toast(`+${e.amount} tokens`, 'good');
+          break;
+        case 'ActCompleted':
+          this.toast(`Epic closed: Act ${e.act}, ${e.title}. Gideon has an announcement.`, 'good');
+          break;
+        case 'StoryFlagSet':
+          // The end-of-act summary opens when the all-hands conversation ends.
+          if (e.flag === 'heard-all-hands') this.pendingActComplete = true;
+          break;
+        case 'DialogueEnded':
+          if (this.pendingActComplete && e.npcId === 'gideon') {
+            this.pendingActComplete = false;
+            this.open('actComplete');
+          }
           break;
       }
     }

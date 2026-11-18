@@ -6,6 +6,7 @@ import { createPhaserGame } from '../game/createGame';
 import { Hud } from './components/Hud';
 import { DialogueBox } from './components/DialogueBox';
 import { BattlePanel } from './components/BattlePanel';
+import { MinigamePanel } from './components/MinigamePanel';
 import { Panels } from './components/Panels';
 import { Toasts } from './components/Toasts';
 import { TitleScreen } from './components/TitleScreen';
@@ -75,6 +76,7 @@ function GameStage({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
         <Hud rt={rt} />
         <DialogueBox rt={rt} />
         <BattlePanel rt={rt} />
+        <MinigamePanel rt={rt} />
         <Toasts rt={rt} />
         <MenuButton rt={rt} />
         <Panels
@@ -91,7 +93,8 @@ function GameStage({ rt, onQuit }: { rt: Runtime; onQuit: () => void }) {
 
 function MenuButton({ rt }: { rt: Runtime }) {
   const state = useGameState(rt);
-  if (modeOf(state) === 'battle') return null; // Esc still opens the menu
+  const mode = modeOf(state);
+  if (mode === 'battle' || mode === 'minigame') return null; // Esc still opens the menu
   return (
     <button className="btn btn-small menu-button" onClick={() => rt.ui.open('menu')}>
       Menu <kbd>Esc</kbd>
